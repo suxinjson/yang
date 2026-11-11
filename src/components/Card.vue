@@ -40,7 +40,7 @@
 
       <!-- Card Title -->
       <div class="w-full text-center truncate pb-0.5">
-        <span class="text-[10px] font-extrabold text-gray-800 tracking-tight leading-none block truncate">
+        <span class="text-[11px] font-extrabold text-gray-800 tracking-tight leading-none block truncate">
           {{ def?.name || '卡牌' }}
         </span>
       </div>
@@ -131,12 +131,13 @@ function handleClick() {
 
 .card-inner {
   border-width: 2px;
+  border-bottom-width: 4px;
   border-style: solid;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -2px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.16), 0 2px 4px -2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .is-covered .card-inner {
-  filter: brightness(0.72) grayscale(0.25);
+  filter: brightness(0.65) grayscale(0.28);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 

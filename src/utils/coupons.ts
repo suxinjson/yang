@@ -1,6 +1,8 @@
-import type { LoveCoupon, CouponTarget } from '../types/game'
-import { loadAdminConfig } from './adminConfig'
-import { apiAddCoupon, apiRedeemCoupon, apiFetchCoupons } from './api'
+import type { LoveCoupon } from '../types/game'
+import { apiRedeemCoupon, apiFetchCoupons } from './api'
+import { clientFetch, onlineRequired, getInstallationId } from './clientSession'
+import { acceptServerState, serverState } from './serverState'
+import { getBaseUrl } from './api'
 
 const COUPON_STORAGE_KEY = 'couple_game_love_coupons_v2'
 
@@ -128,56 +130,31 @@ export function saveCoupons(coupons: LoveCoupon[]) {
 }
 
 // Draw a random coupon based on the admin configured penalty ratio
-export function generateRandomCoupon(context: string): LoveCoupon {
-  const config = loadAdminConfig()
-  const rand = Math.random() * 100
-  const isGfPenalty = rand < config.gfPenaltyRatio // e.g. 75% chance of girlfriend task
-
-  let chosen: { title: string; desc: string; icon: string; target: CouponTarget }
-
-  if (isGfPenalty && config.girlfriendTasks && config.girlfriendTasks.length > 0) {
-    const idx = Math.floor(Math.random() * config.girlfriendTasks.length)
-    chosen = config.girlfriendTasks[idx]
-  } else if (config.boyfriendRewards && config.boyfriendRewards.length > 0) {
-    const idx = Math.floor(Math.random() * config.boyfriendRewards.length)
-    chosen = config.boyfriendRewards[idx]
-  } else {
-    chosen = {
-      title: '手洗袜子券',
-      desc: '帮对方手洗袜子一次，并夸赞袜子香喷喷！',
-      icon: '🧦',
-      target: 'girlfriend_pays'
-    }
-  }
-
-  const newCoupon: LoveCoupon = {
-    id: `coupon_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-    title: chosen.title,
-    desc: chosen.desc,
-    icon: chosen.icon,
-    used: false,
-    target: chosen.target,
-    obtainedAt: context
-  }
-
-  // Save to stored list & sync to server
-  const existing = loadCoupons()
-  existing.unshift(newCoupon)
-  saveCoupons(existing)
-
-  apiAddCoupon(newCoupon).catch(() => {})
-
-  return newCoupon
+export async function generateRandomCoupon(context: string): Promise<LoveCoupon> {
+  const match = context.match(/([123])/)
+  const key = 'gang_pending_reward_' + (match ? 'win_' + match[1] : 'summon')
+  const operationId = localStorage.getItem(key) || crypto.randomUUID()
+  localStorage.setItem(key, operationId)
+  const response = await clientFetch(getBaseUrl() + (onlineRequired ? '/api/client/coupons/draw' : '/api/coupons/draw'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(8000),
+    body: JSON.stringify({ operationId, deviceId: getInstallationId(), context: match ? 'win_' + match[1] : 'summon' })
+  })
+  const data = await response.json()
+  if (data.state) acceptServerState(data.state)
+  if (response.status === 409) localStorage.removeItem(key)
+  if (!response.ok || !data.coupon?.id || !Array.isArray(data.list)) throw new Error('Coupon draw not confirmed')
+  saveCoupons(serverState.value?.coupons || data.list)
+  localStorage.removeItem(key)
+  const confirmed = serverState.value ? serverState.value.coupons.find(c => c.id === data.coupon.id) : data.coupon
+  if (!confirmed) throw new Error('Coupon was removed by a newer server update')
+  return confirmed
 }
 
-export function redeemCoupon(id: string): LoveCoupon[] {
-  const list = loadCoupons()
-  const target = list.find(c => c.id === id)
-  if (target) {
-    target.used = true
-    saveCoupons(list)
-    apiRedeemCoupon(id).catch(() => {})
-  }
+export async function redeemCoupon(id: string): Promise<LoveCoupon[]> {
+  if (!await apiRedeemCoupon(id)) throw new Error('Coupon redemption failed')
+  const list = serverState.value?.coupons || await apiFetchCoupons()
+  if (!list) throw new Error('Coupon synchronization failed')
+  saveCoupons(list)
   return list
 }
 
@@ -191,5 +168,6 @@ export async function syncCouponsFromServer(): Promise<LoveCoupon[]> {
   } catch (e) {
     console.warn('Sync coupons failed', e)
   }
+  if (onlineRequired) throw new Error('Online coupons unavailable')
   return loadCoupons()
 }

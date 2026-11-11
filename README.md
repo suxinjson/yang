@@ -74,7 +74,7 @@
 
 ## 📦 安卓客户端
 
-安卓版为 `钢了钢 1.1.0`（包名 `com.love.ganglegang`），支持 Android 7.0 及以上。游戏页面与默认图片随 APK 打包，启动时自动连接 `.env.android` 中内置的后台 `https://124.70.184.136/gang`，同步关卡、照片和存折，无需用户填写服务器地址。网络不可用时使用本机已保存的配置和存折。
+安卓版为 `钢了钢 1.2.1`（包名 `com.love.ganglegang`），支持 Android 7.0 及以上及现代 Android System WebView。启动时自动连接 `.env.android` 中内置的后台 `https://124.70.184.136/gang`，无需填写服务器地址。App 必须全程在线，断网、后台或操作记录不可用时锁定；重新连接后重新开始当前关。后台的「客户端日志」可筛选查看使用记录。须先部署配套后台更新，详见 [安卓在线版说明](ANDROID_ONLINE.md)。
 
 Windows 安装 Java 21、Android SDK 36、Build Tools 35.0.0 后运行：
 
@@ -82,7 +82,7 @@ Windows 安装 Java 21、Android SDK 36、Build Tools 35.0.0 后运行：
 powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1 -JdkPath '你的JDK目录' -SdkPath '你的Android SDK目录'
 ```
 
-脚本构建前端、同步 Capacitor、生成正式签名 APK 并校验签名，产物为 `artifacts/android/ganglegang-1.1.0.apk` 和 SHA256 文件。签名密钥保存在当前 Windows 用户目录的 `.android/ganglegang-signing` 中，密码由当前 Windows 用户加密保存；请备份整个目录并保留该 Windows 账户访问权限，后续覆盖升级需要同一密钥。构建脚本不上传或发布应用。
+脚本构建前端、同步 Capacitor、生成正式签名 APK 并校验签名，产物为 `artifacts/android/ganglegang-1.2.1.apk` 和 SHA256 文件。签名密钥保存在当前 Windows 用户目录的 `.android/ganglegang-signing` 中，密码由当前 Windows 用户加密保存；请备份整个目录并保留该 Windows 账户访问权限，后续覆盖升级需要同一密钥。构建脚本不上传或发布应用。
 
 仅同步安卓工程可运行 `npm run build:android`，然后用 Android Studio 打开现有 `android` 目录。更新内置后台地址需修改 `.env.android` 后重新打包。
 
@@ -92,6 +92,6 @@ powershell -ExecutionPolicy Bypass -File scripts/build-android.ps1 -JdkPath '你
 
 测试覆盖 300 个默认随机关卡与 64 组极端配置的边界和通关路径，以及多种屏幕宽度、三关实际点击通关、移出后撤回、消除过程中重开、后台配置恢复、失败提示和服务端鉴权。
 
-后台入口为 `/?admin`，也可连点游戏标题五次。关卡张数允许 6–240（保存时取 3 的倍数并限制为实际容量），牌型 1–12、层数 1–8、横纵范围 60–100%、位置随机扰动 0–100%。后台会分别提示「已保存并同步到服务器」和「仅保存在本机，未同步」。同一页面保存后重开或下一关应用，其他设备刷新游戏获取已同步的新配置。服务器重启后需要重新登录后台。
+后台入口为 `/?admin`，也可连点游戏标题五次。关卡张数允许 6–240（保存时取 3 的倍数并限制为实际容量），牌型 1–12、层数 1–8、横纵范围 60–100%、位置随机扰动 0–100%。后台会分别提示「已保存并同步到服务器」和「仅保存在本机，未同步」。App 每 5 秒、Web 页面每 2 秒检查配置和奖励券更新；抽券、兑现及清空由服务器确认，自动同步打开的页面。布局、张数及牌库变化重开或下一关应用。后台并发修改有版本检查和草稿冲突提示，服务器重启后需要重新登录后台。
 
 后台「卡牌种类与图片」中的「男友帅照配置」支持六张照片分别改名、上传替换及恢复默认照片。支持 JPG / PNG / WebP（单张不超过 10MB），自动压缩至最长边 640 像素后保存到服务器配置。可固定一张或随机选择，名称和照片同步用于帅照卡牌与救场弹窗。修改名字后点击「保存帅照配置」或「保存并退出后台」。关闭「加入叠叠卡牌」后，后续牌局不再抽取帅照卡牌，救场功能继续可用；开启表示参与随机抽牌，并非每局必出。

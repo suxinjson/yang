@@ -6,6 +6,7 @@ import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { defaultGameSettings, normalizeGameSettings } from './shared/gameConfig.js'
 import { normalizeBoyfriendSettings } from './shared/boyfriendConfig.js'
+import { registerClientRoutes } from './shared/clientAudit.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -14,6 +15,7 @@ const app = express()
 const PORT = process.env.PORT || 3000
 
 app.use(cors())
+app.use('/api/client', express.json({ limit: '16kb' }))
 app.use(express.json({ limit: '25mb' }))
 app.use(express.urlencoded({ extended: true, limit: '25mb' }))
 
@@ -24,7 +26,14 @@ if (!fs.existsSync(dataDir)) {
 }
 
 const configFilePath = path.join(dataDir, 'config.json')
-const couponsFilePath = path.join(dataDir, 'coupons.json')
+const couponsFilePath = path.join(dataDir, 'coupon-ledger.json')
+const legacyCouponsPath = path.join(dataDir, 'coupons.json')
+const syncEpoch = crypto.randomUUID()
+let stateRevision = 0
+function getServerState() {
+  const config = publicConfig(loadServerConfig())
+  return { epoch: syncEpoch, revision: stateRevision, configVersion: crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex'), config, coupons: loadServerCoupons() }
+}
 
 // Initial Default Config
 const DEFAULT_CONFIG = {
@@ -137,7 +146,8 @@ const DEFAULT_CONFIG = {
 function atomicWriteJson(filePath, data) {
   const tmpPath = `${filePath}.tmp.${Date.now()}`
   try {
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+    const fd = fs.openSync(tmpPath, 'w')
+    try { fs.writeFileSync(fd, JSON.stringify(data, null, 2), 'utf-8'); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
     fs.renameSync(tmpPath, filePath)
   } catch (err) {
     if (fs.existsSync(tmpPath)) {
@@ -152,9 +162,7 @@ function loadServerConfig() {
     try {
       const data = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'))
       return { ...DEFAULT_CONFIG, ...data, ...normalizeBoyfriendSettings(data), gameSettings: normalizeGameSettings(data?.gameSettings) }
-    } catch (e) {
-      console.error('Failed to read config file', e)
-    }
+    } catch (e) { console.error('Failed to read config file', e); throw e }
   }
   atomicWriteJson(configFilePath, DEFAULT_CONFIG)
   return { ...DEFAULT_CONFIG }
@@ -162,15 +170,23 @@ function loadServerConfig() {
 
 function saveServerConfig(cfg) {
   atomicWriteJson(configFilePath, cfg)
+  stateRevision++
 }
 
-function loadServerCoupons() {
+function loadCouponLedger() {
   if (fs.existsSync(couponsFilePath)) {
     try {
-      return JSON.parse(fs.readFileSync(couponsFilePath, 'utf-8'))
-    } catch (e) {
-      console.error('Failed to read coupons file', e)
-    }
+      const ledger = JSON.parse(fs.readFileSync(couponsFilePath, 'utf-8'))
+      if (!Array.isArray(ledger.coupons) || !ledger.operations || typeof ledger.operations !== 'object' || Array.isArray(ledger.operations)) throw new Error('Invalid coupons storage')
+      return ledger
+    } catch (e) { console.error('Failed to read coupons file', e); throw e }
+  }
+  if (fs.existsSync(legacyCouponsPath)) {
+    const coupons = JSON.parse(fs.readFileSync(legacyCouponsPath, 'utf8'))
+    if (!Array.isArray(coupons)) throw new Error('Invalid legacy coupons storage')
+    const ledger = { coupons, operations: {} }
+    atomicWriteJson(couponsFilePath, ledger)
+    return ledger
   }
   const initCoupons = [
     {
@@ -192,12 +208,18 @@ function loadServerCoupons() {
       obtainedAt: '初始心愿'
     }
   ]
-  atomicWriteJson(couponsFilePath, initCoupons)
-  return initCoupons
+  const ledger = { coupons: initCoupons, operations: {} }
+  atomicWriteJson(couponsFilePath, ledger)
+  return ledger
 }
 
+function loadServerCoupons() { return loadCouponLedger().coupons }
+function saveCouponLedger(ledger) {
+  atomicWriteJson(couponsFilePath, ledger)
+  stateRevision++
+}
 function saveServerCoupons(list) {
-  atomicWriteJson(couponsFilePath, list)
+  saveCouponLedger({ ...loadCouponLedger(), coupons: list })
 }
 
 // Active Admin Session Tokens: token -> expireTimestamp
@@ -235,12 +257,21 @@ function requireAdminAuth(req, res, next) {
 const loginAttempts = new Map()
 
 // --- API Endpoints ---
+registerClientRoutes(app, {
+  dataDir, requireAdminAuth,
+  getConfig: () => publicConfig(loadServerConfig()),
+  getCoupons: loadServerCoupons,
+  saveCoupons: saveServerCoupons,
+  getState: getServerState, getCouponLedger: loadCouponLedger, saveCouponLedger
+})
+app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
 
 // 0. Health Check for CI/CD & Caddy probe
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
     app: 'ganglegang',
+    clientProtocol: 2,
     timestamp: Date.now(),
     uptime: process.uptime()
   })
@@ -306,9 +337,11 @@ app.get('/api/config', (req, res) => {
     activeBfPhoto: cfg.bfPhotos[selectedIndex]?.image || cfg.bfPhotos[0].image
   })
 })
+app.get('/api/state', (_req, res) => res.json({ state: getServerState() }))
 
 // 3. Save Admin Config (From Web Admin Panel - Protected)
 app.post('/api/config', requireAdminAuth, (req, res) => {
+  if (req.headers['if-match'] && req.headers['if-match'] !== getServerState().configVersion) return res.status(409).json({ error: '配置已由其他页面更新，请先重新载入配置再保存', state: getServerState() })
   const newConfig = req.body
   if (!newConfig || typeof newConfig !== 'object' || Array.isArray(newConfig)) {
     return res.status(400).json({ error: 'Invalid config' })
@@ -334,7 +367,7 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
   const boyfriendPatch = Object.fromEntries(['bfPhotos', 'bfCardEnabled'].filter(key => Object.hasOwn(newConfig, key)).map(key => [key, newConfig[key]]))
   const merged = { ...current, ...patch, ...normalizeBoyfriendSettings({ ...current, ...boyfriendPatch }), gameSettings: Object.hasOwn(newConfig, 'gameSettings') ? normalizeGameSettings(newConfig.gameSettings) : current.gameSettings }
   saveServerConfig(merged)
-  res.json({ success: true, config: publicConfig(merged) })
+  res.json({ success: true, config: publicConfig(merged), state: getServerState() })
 })
 
 // 4. Get Coupons List
@@ -344,15 +377,17 @@ app.get('/api/coupons', (req, res) => {
 })
 
 // 5. Add / Draw New Coupon
-app.post('/api/coupons', (req, res) => {
+app.post('/api/coupons', requireAdminAuth, (req, res) => {
   const coupon = req.body
-  if (!coupon || !coupon.title) {
+  if (!coupon || typeof coupon.id !== 'string' || typeof coupon.title !== 'string' || typeof coupon.used !== 'boolean') {
     return res.status(400).json({ error: 'Invalid coupon' })
   }
   const list = loadServerCoupons()
+  const existing = list.find(item => item.id === coupon.id)
+  if (existing) return res.json({ success: true, list, state: getServerState() })
   list.unshift(coupon)
   saveServerCoupons(list)
-  res.json({ success: true, list })
+  res.json({ success: true, list, state: getServerState() })
 })
 
 // 6. Redeem / Mark Coupon Used
@@ -361,9 +396,8 @@ app.post('/api/coupons/redeem', (req, res) => {
   const list = loadServerCoupons()
   const target = list.find(c => c.id === id)
   if (target) {
-    target.used = true
-    saveServerCoupons(list)
-    return res.json({ success: true, list })
+    if (!target.used) { target.used = true; saveServerCoupons(list) }
+    return res.json({ success: true, list, state: getServerState() })
   }
   res.status(404).json({ error: 'Coupon not found' })
 })
@@ -371,7 +405,7 @@ app.post('/api/coupons/redeem', (req, res) => {
 // 7. Clear All Coupons (Admin only - Protected)
 app.post('/api/coupons/reset', requireAdminAuth, (req, res) => {
   saveServerCoupons([])
-  res.json({ success: true, list: [] })
+  res.json({ success: true, list: [], state: getServerState() })
 })
 
 // 8. Upload Card Photo from Admin (Protected & Sanitized)
@@ -416,7 +450,7 @@ app.post('/api/upload', requireAdminAuth, (req, res) => {
     cfg.activeCardPhotos[cleanCardId] = `/photos/${fileName}`
     saveServerConfig(cfg)
 
-    res.json({ success: true, path: `/photos/${fileName}` })
+    res.json({ success: true, path: `/photos/${fileName}`, state: getServerState() })
   } catch (e) {
     console.error('Upload failed', e)
     res.status(500).json({ error: 'Failed to save photo' })
@@ -424,6 +458,8 @@ app.post('/api/upload', requireAdminAuth, (req, res) => {
 })
 
 // --- Static Files & SPA Fallback ---
+// Unknown APIs must never fall through to an HTML page (including an older backend).
+app.use('/api', (_req, res) => res.status(404).json({ error: 'API not found' }))
 const publicDir = path.join(__dirname, 'public')
 const distDir = path.join(__dirname, 'dist')
 const persistentPhotosDir = path.join(dataDir, 'photos')

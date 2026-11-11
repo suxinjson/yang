@@ -40,6 +40,8 @@ export interface TaskItem {
   target: CouponTarget
 }
 
+export type SolvabilityMode = 'guaranteed' | 'normal' | 'hard' | 'impossible'
+
 export interface LevelSettings {
   minCards: number
   maxCards: number
@@ -49,12 +51,22 @@ export interface LevelSettings {
   spreadY: number
   randomness: number
   layout: 'scatter' | 'heart'
+  solvability?: SolvabilityMode
 }
+
+export type SlotUnlockConditionType = 'match_count' | 'love_coupon' | 'boyfriend_rescue' | 'urgent_click' | 'free_click'
 
 export interface GameSettings {
   boardWidth: number
   boardHeight: number
-  levels: [LevelSettings, LevelSettings, LevelSettings]
+  cardWidth?: number
+  cardHeight?: number
+  initialSlots?: number
+  maxSlots?: number
+  slotUnlockCondition?: SlotUnlockConditionType
+  slotUnlockMatchCount?: number
+  totalLevels?: number
+  levels: LevelSettings[]
 }
 
 export interface AdminConfig {

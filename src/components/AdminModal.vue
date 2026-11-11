@@ -80,6 +80,7 @@
 
         <!-- Navigation Tabs -->
         <div class="flex items-center gap-1 py-2 border-b border-gray-100 text-[11px] font-bold overflow-x-auto">
+          <button class="px-2.5 py-1.5 rounded-xl whitespace-nowrap" :class="activeTab === 'logs' ? 'bg-sky-700 text-white' : 'bg-gray-100 text-gray-600'" @click="activeTab = 'logs'">📋 客户端日志</button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
             :class="activeTab === 'game' ? 'bg-slate-900 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
@@ -124,6 +125,7 @@
 
         <!-- Tab Content Body -->
         <div class="flex-1 overflow-y-auto py-3 space-y-4 pr-1 text-xs">
+          <ClientLogsPanel v-if="activeTab === 'logs'" />
           <GameSettingsPanel ref="gamePanel" v-show="activeTab === 'game'" :settings="config.gameSettings" :busy="saveStatus === 'saving'" @save="saveGameSettings" />
 
           <!-- TAB 1: 卡牌图片与增减全面配置 -->
@@ -601,6 +603,10 @@
         </div>
 
         <!-- Footer -->
+        <div v-if="remoteConflict" role="alert" class="my-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+          其他页面已更新配置。你的未保存修改已保留，请重新载入最新配置后再修改保存。
+          <button class="mt-2 block font-bold underline" @click="reloadRemoteConfig">重新载入最新配置</button>
+        </div>
         <div class="pt-3 border-t border-gray-100 flex items-center justify-between">
           <span role="status" class="text-[10px] font-bold flex items-center gap-1 pr-2" :class="saveStatus === 'synced' ? 'text-emerald-600' : 'text-amber-700'">
             <span>{{ saveStatusText }}</span>
@@ -629,6 +635,9 @@ import { apiLogin, apiResetCoupons, apiChangePassword, getAdminToken, resolveAss
 import { DEFAULT_CARD_DEFINITIONS } from '../utils/cardThemes'
 import GameSettingsPanel from './GameSettingsPanel.vue'
 import BoyfriendSettingsPanel from './BoyfriendSettingsPanel.vue'
+import ClientLogsPanel from './ClientLogsPanel.vue'
+import { serverState } from '../utils/serverState'
+import { normalizeAdminConfig } from '../utils/adminConfig'
 
 const props = defineProps<{
   cardDefs: CardDefinition[]
@@ -647,7 +656,7 @@ const passwordInput = ref('')
 const loginError = ref('')
 
 // Tabs
-const activeTab = ref<'game' | 'photos' | 'rules' | 'gf_tasks' | 'bf_rewards' | 'security'>('game')
+const activeTab = ref<'game' | 'photos' | 'rules' | 'gf_tasks' | 'bf_rewards' | 'security' | 'logs'>('game')
 
 // Config
 const config = ref<AdminConfig>(loadAdminConfig())
@@ -656,6 +665,9 @@ const gamePanel = ref<InstanceType<typeof GameSettingsPanel> | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'synced' | 'local' | 'failed'>('idle')
 const saveStatusText = computed(() => ({ idle: '修改后请保存；关卡参数下局应用', saving: '正在保存到服务器…', synced: '已保存并同步到服务器', local: '仅保存在本机，未同步；请检查网络或重新登录', failed: '保存失败，请重试或释放本机存储空间' })[saveStatus.value])
 let saveVersion = 0
+const remoteConflict = ref(false)
+let configVersion = serverState.value?.configVersion
+let cleanDraft = ''
 
 // Form inputs
 const newGfTask = ref({ title: '', desc: '', icon: '🧦' })
@@ -690,6 +702,23 @@ function initLocalCards() {
   }
 }
 initLocalCards()
+cleanDraft = JSON.stringify(config.value)
+function reloadRemoteConfig() {
+  if (!serverState.value) return
+  config.value = normalizeAdminConfig(serverState.value.config)
+  initLocalCards()
+  configVersion = serverState.value.configVersion
+  cleanDraft = JSON.stringify(config.value)
+  remoteConflict.value = false
+  saveStatus.value = 'idle'
+}
+watch(() => serverState.value?.configVersion, version => {
+  if (!version || version === configVersion) return
+  if (saveStatus.value === 'saving') return
+  if (JSON.stringify(config.value) !== cleanDraft || gamePanel.value?.hasChanges()) {
+    remoteConflict.value = true
+  } else reloadRemoteConfig()
+})
 
 watch(() => props.cardDefs, (newDefs) => {
   if (!config.value.customCards || config.value.customCards.length === 0) {
@@ -815,10 +844,25 @@ function updateBoyfriendConfig(patch: Partial<Pick<AdminConfig, 'bfPhotos' | 'bf
 }
 
 async function handleSave() {
+  if (remoteConflict.value) { saveStatus.value = 'failed'; return 'failed' }
   const version = ++saveVersion
+  const submitted = JSON.stringify(config.value)
   saveStatus.value = 'saving'
-  const result = await saveAdminConfig(config.value)
+  let committedVersion: string | undefined
+  const result = await saveAdminConfig(config.value, configVersion, saved => { committedVersion = saved })
   if (version === saveVersion) saveStatus.value = result
+  if (version === saveVersion && result === 'synced') {
+    if (committedVersion && serverState.value?.configVersion !== committedVersion) {
+      remoteConflict.value = true
+      saveStatus.value = 'failed'
+      return 'failed'
+    }
+    const unchanged = JSON.stringify(config.value) === submitted && !gamePanel.value?.hasChanges()
+    if (serverState.value && unchanged) config.value = normalizeAdminConfig(serverState.value.config)
+    configVersion = committedVersion || serverState.value?.configVersion
+    cleanDraft = unchanged ? JSON.stringify(config.value) : submitted
+    remoteConflict.value = false
+  } else if (serverState.value?.configVersion && serverState.value.configVersion !== configVersion) remoteConflict.value = true
   emit('config-updated')
   return result
 }
@@ -902,7 +946,7 @@ async function resetAllCoupons() {
       alert('清空失败，请检查网络或重新登录后重试！')
       return
     }
-    saveCoupons([])
+    saveCoupons(serverState.value?.coupons || [])
     emit('config-updated')
     alert('心愿存折已清空！')
   }

@@ -32,6 +32,7 @@ deploy_bundle/
 .app-deploy.lock
 .app-update.*
 data/*.tmp.*
+data/client-logs/
 
 # Android build artifacts
 android/app/build/

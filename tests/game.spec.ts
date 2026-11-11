@@ -11,7 +11,13 @@ function seeded(seed: number) {
 }
 
 async function openGame(page: Page) {
-  await page.route('**/api/**', route => route.fulfill({ json: route.request().url().includes('/coupons') ? [] : null }))
+  await page.route('**/api/**', route => {
+    if (route.request().url().endsWith('/coupons/draw')) {
+      const coupon = { id: crypto.randomUUID(), title: 'Test reward', desc: '', icon: '💖', used: false, obtainedAt: 'test', target: 'boyfriend_pays' }
+      return route.fulfill({ json: { coupon, list: [coupon] } })
+    }
+    return route.fulfill({ json: route.request().url().includes('/coupons') ? [] : null })
+  })
   await page.route('**/photos/**', route => route.abort())
   await page.goto('/')
   await expect(page.locator('.board-arena .game-card').first()).toBeVisible()

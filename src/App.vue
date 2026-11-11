@@ -1,11 +1,12 @@
 <template>
-  <div class="game-wrapper min-h-screen w-full flex flex-col items-center justify-between bg-gradient-to-b from-rose-100 via-pink-50 to-purple-50 text-gray-800 select-none overflow-x-hidden font-sans">
+  <OnlineGate v-if="onlineRequired && onlineState !== 'ready'" @retry="connectOnline" />
+  <div v-else class="game-wrapper min-h-screen w-full flex flex-col items-center justify-between bg-gradient-to-b from-rose-100 via-pink-50 to-purple-50 text-gray-800 select-none overflow-x-hidden font-sans">
     
     <!-- Top App Navigation / Header Bar -->
     <header class="w-full max-w-[440px] px-3 pt-3 pb-1 flex flex-col gap-1.5 z-20">
       <div class="flex items-center justify-between">
         <!-- Title & Slogan -->
-        <div class="flex items-center gap-1.5 select-none" @click="handleSecretLogoClick">
+        <div class="flex items-center gap-1.5 select-none" data-audit-control="game_title" @click="handleSecretLogoClick">
           <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-rose-500 text-white flex items-center justify-center font-black text-sm shadow-sm shadow-rose-300">
             钢
           </div>
@@ -137,6 +138,9 @@
       </div>
     </footer>
 
+    <p v-if="operationError" role="alert" class="text-xs text-red-600 p-2">{{ operationError }}</p>
+    <p v-if="onlineRequired" class="text-[10px] text-gray-400 px-3 pb-2">全程在线 · 应用内使用与操作记录可由管理员查看</p>
+    <Teleport to="body"><div v-if="onlineRequired && (actionBusy || rewardPending)" class="fixed inset-0 z-[20000] cursor-wait" aria-label="正在确认操作"></div></Teleport>
     <!-- Modals -->
     <!-- 1. Boyfriend Superhero Rescue Modal -->
     <BoyfriendModal
@@ -178,6 +182,7 @@
 
     <!-- 5. Admin Control Center Modal (Password Protected) -->
     <AdminModal
+      :key="onlineSessionId"
       v-if="showAdminModal"
       :card-defs="cardDefs"
       @close="showAdminModal = false"
@@ -190,15 +195,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import confetti from 'canvas-confetti'
 import type { CardItem, CardDefinition, LoveCoupon, AdminConfig } from './types/game'
 import { sound } from './utils/sound'
 import { loadCardDefinitions, saveCustomImage, removeCustomImage } from './utils/cardThemes'
 import { createLevel, updateCardCoverage } from './utils/levelGenerator'
 import { loadCoupons, redeemCoupon, generateRandomCoupon, syncCouponsFromServer } from './utils/coupons'
-import { loadAdminConfig, saveAdminConfig, syncAdminConfigFromServer, getActiveBfProfile } from './utils/adminConfig'
-import { apiUploadPhoto } from './utils/api'
+import { loadAdminConfig, syncAdminConfigFromServer, getActiveBfProfile, acceptServerConfig } from './utils/adminConfig'
+import { getBaseUrl } from './utils/api'
+import { onlineRequired, onlineState, onlineSessionId, actionBusy, openOnlineSession, activateOnlineSession, recordClientEvent, runClientAction, installClientLifecycle, stopClientSession, blockOnline } from './utils/clientSession'
+import { saveCoupons } from './utils/coupons'
+import OnlineGate from './components/OnlineGate.vue'
+import { serverState, acceptServerState } from './utils/serverState'
+import { clientFetch, operationError } from './utils/clientSession'
 import { getBoardLayout } from './utils/boardGeometry'
 import { defaultGameSettings, normalizeGameSettings } from '../shared/gameConfig.js'
 
@@ -218,8 +228,9 @@ const allCards = ref<CardItem[]>([])
 const slotCards = ref<CardItem[]>([])
 const stagedCards = ref<CardItem[]>([])
 const eliminatingIds = ref<number[]>([])
+const rewardPending = ref(false)
 const cardHistory = ref<{ card: CardItem; fromStatus: 'board' | 'staged' }[]>([])
-const isResolving = computed(() => eliminatingIds.value.length > 0)
+const isResolving = computed(() => eliminatingIds.value.length > 0 || actionBusy.value || rewardPending.value)
 const canUndo = computed(() => cardHistory.value.some(({ card }) => card.status === 'slot' || card.status === 'staged'))
 const gameTimers = new Set<ReturnType<typeof setTimeout>>()
 
@@ -301,6 +312,19 @@ function handleSecretLogoClick() {
 }
 
 const currentAdminConfig = ref<AdminConfig>(loadAdminConfig())
+watch(serverState, (snapshot, previous) => {
+  if (!snapshot) return
+  saveCoupons(snapshot.coupons)
+  loveCoupons.value = snapshot.coupons
+  latestWonCoupon.value = snapshot.coupons.find(coupon => coupon.id === latestWonCoupon.value?.id)
+  summonCostCoupon.value = snapshot.coupons.find(coupon => coupon.id === summonCostCoupon.value?.id)
+  if (previous?.configVersion === snapshot.configVersion) return
+  currentAdminConfig.value = acceptServerConfig(snapshot.config)
+  rescueProfile.value = getActiveBfProfile(currentAdminConfig.value)
+  cardDefs.value = loadCardDefinitions()
+  // Keep the active board geometry and type set stable, but propagate changed names/photos immediately.
+  roundCardDefs.value = roundCardDefs.value.map(def => ({ ...def, ...(cardDefs.value.find(latest => latest.id === def.id) || {}) }))
+}, { flush: 'sync' })
 const couponDisplayName = computed(() => currentAdminConfig.value.couponName || '专属心愿券')
 
 function handleAdminConfigUpdated() {
@@ -326,6 +350,7 @@ function toggleSound() {
 
 // Start / Initialize Level
 function initLevel(level: number) {
+  if (onlineRequired && !['ready', 'connecting'].includes(onlineState.value)) return
   clearGameTimers()
   currentLevel.value = level
   slotCards.value = []
@@ -348,13 +373,24 @@ function initLevel(level: number) {
   activeGameSettings.value = normalizeGameSettings(currentAdminConfig.value.gameSettings)
   const availableTypes = roundCardDefs.value.map(d => d.id)
   allCards.value = createLevel(level as 1 | 2 | 3, availableTypes, Math.random, activeGameSettings.value).cards
+  if (onlineRequired) void recordClientEvent('round_start', { level, total: allCards.value.length, roundId: crypto.randomUUID() }).catch(() => {})
 }
 
 function restartCurrentLevel() {
+  if (rewardPending.value || (onlineRequired && isResolving.value)) return
+  return runClientAction('restart', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value }, () => restartCurrentLevelImpl())
+}
+
+function restartCurrentLevelImpl() {
   initLevel(currentLevel.value)
 }
 
 function handleNextLevel() {
+  if (isResolving.value) return
+  return runClientAction('next_level', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value }, () => handleNextLevelImpl())
+}
+
+function handleNextLevelImpl() {
   if (currentLevel.value < 3) {
     initLevel(currentLevel.value + 1)
   } else {
@@ -364,7 +400,12 @@ function handleNextLevel() {
 
 // Click Board Card -> Move into Slot
 function handleCardClick(card: CardItem) {
-  if (isResolving.value || showFailModal.value || showWinModal.value) return
+  if (isResolving.value) return
+  return runClientAction('card_pick', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value, cardId: card.id, cardType: card.type }, () => handleCardClickImpl(card))
+}
+
+function handleCardClickImpl(card: CardItem) {
+  if (eliminatingIds.value.length || showFailModal.value || showWinModal.value) return
   if (card.status !== 'board' || card.isCovered) return
   if (slotCards.value.length >= 7) return
 
@@ -378,7 +419,7 @@ function handleCardClick(card: CardItem) {
   insertCardIntoSlot(card)
 
   // Recalculate board coverage
-  updateCardCoverage(allCards.value)
+  updateCardCoverage(allCards.value, boardLayout.value.cardWidth / boardLayout.value.stepX, boardLayout.value.cardHeight / boardLayout.value.stepY)
 
   sound.playSlot()
 
@@ -404,7 +445,7 @@ function insertCardIntoSlot(card: CardItem) {
 
 // Check for 3 identical cards
 function checkMatchElimination() {
-  if (isResolving.value) return
+  if (eliminatingIds.value.length) return
   const typeCountMap: Record<string, CardItem[]> = {}
   for (const card of slotCards.value) {
     if (!typeCountMap[card.type]) {
@@ -440,7 +481,10 @@ function checkMatchElimination() {
         eliminatingIds.value = eliminatingIds.value.filter(id => !ids.includes(id))
 
         // Check Victory
-        checkWinCondition()
+        void checkWinCondition().catch(() => {
+          operationError.value = '奖励同步失败，请联网后重新连接或重试'
+          blockOnline('奖励同步失败，请重新连接')
+        })
       }, 240)
       break
     }
@@ -452,29 +496,38 @@ function checkMatchElimination() {
       if (slotCards.value.length >= 7 && !isResolving.value) {
         sound.playFail()
         showFailModal.value = true
+        if (onlineRequired) void recordClientEvent('lose', { level: currentLevel.value }).catch(() => {})
       }
     }, 280)
   }
 }
 
 // Check if all cards on board and slots are cleared
-function checkWinCondition() {
+async function checkWinCondition() {
   const remainingActive = allCards.value.filter(c => c.status !== 'cleared')
   if (remainingActive.length === 0) {
-    sound.playWin()
-    triggerVictoryConfetti()
+    rewardPending.value = true
+    try {
+      sound.playWin()
+      triggerVictoryConfetti()
 
-    // Draw coupon according to admin penalty ratio (e.g. 70% girlfriend task / 30% boyfriend reward)
-    const won = generateRandomCoupon(`第 ${currentLevel.value} 关通关`)
-    latestWonCoupon.value = won
-    loveCoupons.value = loadCoupons()
-    showWinModal.value = true
+      if (onlineRequired) await recordClientEvent('win', { level: currentLevel.value })
+      const won = await generateRandomCoupon(`第 ${currentLevel.value} 关通关`)
+      latestWonCoupon.value = won
+      loveCoupons.value = loadCoupons()
+      showWinModal.value = true
+    } finally { rewardPending.value = false }
   }
 }
 
 // Move Out 3 Cards (Props 1)
 function handleMoveOut() {
   if (isResolving.value) return
+  return runClientAction('move_out', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value }, () => handleMoveOutImpl())
+}
+
+function handleMoveOutImpl() {
+  if (eliminatingIds.value.length) return
   if (propsState.value.moveOut <= 0 || slotCards.value.length === 0) return
 
   propsState.value.moveOut--
@@ -492,7 +545,12 @@ function handleMoveOut() {
 
 // Return Staged card to Slot
 function handleReturnStaged(card: CardItem) {
-  if (isResolving.value || card.status !== 'staged') return
+  if (isResolving.value) return
+  return runClientAction('return_staged', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value, cardId: card.id, cardType: card.type }, () => handleReturnStagedImpl(card))
+}
+
+function handleReturnStagedImpl(card: CardItem) {
+  if (eliminatingIds.value.length || card.status !== 'staged') return
   if (slotCards.value.length >= 7) return
 
   stagedCards.value = stagedCards.value.filter(c => c.id !== card.id)
@@ -505,6 +563,11 @@ function handleReturnStaged(card: CardItem) {
 // Undo Last Card (Props 2)
 function handleUndo() {
   if (isResolving.value) return
+  return runClientAction('undo', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value }, () => handleUndoImpl())
+}
+
+function handleUndoImpl() {
+  if (eliminatingIds.value.length) return
   if (propsState.value.undo <= 0 || cardHistory.value.length === 0) return
 
   // 严格寻找最近一张仍在卡槽或暂存区（未被消除）的卡牌进行安全撤回
@@ -522,7 +585,7 @@ function handleUndo() {
       stagedCards.value = stagedCards.value.filter(c => c.id !== card.id)
 
       card.status = 'board'
-      updateCardCoverage(allCards.value)
+      updateCardCoverage(allCards.value, boardLayout.value.cardWidth / boardLayout.value.stepX, boardLayout.value.cardHeight / boardLayout.value.stepY)
       restored = true
       break
     }
@@ -536,6 +599,11 @@ function handleUndo() {
 // Shuffle Board Cards (Props 3)
 function handleShuffle() {
   if (isResolving.value) return
+  return runClientAction('shuffle', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value }, () => handleShuffleImpl())
+}
+
+function handleShuffleImpl() {
+  if (eliminatingIds.value.length) return
   if (propsState.value.shuffle <= 0) return
 
   const boardCards = allCards.value.filter(c => c.status === 'board')
@@ -559,16 +627,22 @@ function handleShuffle() {
 // Summon Boyfriend (Ultimate Rescue)
 function handleSummonBoyfriend() {
   if (isResolving.value) return
+  return runClientAction('summon', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value }, () => handleSummonBoyfriendImpl())
+}
+
+async function handleSummonBoyfriendImpl() {
+  if (eliminatingIds.value.length) return
   sound.playRescue()
 
   const admin = loadAdminConfig()
   rescueProfile.value = getActiveBfProfile(admin)
   if (admin.summonCostEnabled) {
-    summonCostCoupon.value = generateRandomCoupon('召唤男友救场')
+    summonCostCoupon.value = await generateRandomCoupon('召唤男友救场')
   } else {
     summonCostCoupon.value = undefined
   }
   loveCoupons.value = loadCoupons()
+  showFailModal.value = false
   showBoyfriendModal.value = true
 
   // Automatically solve 3 cards from slot (or clear 3 cards directly)
@@ -583,7 +657,6 @@ function handleSummonBoyfriend() {
 }
 
 function handleSummonFromFail() {
-  showFailModal.value = false
   handleSummonBoyfriend()
 }
 
@@ -594,17 +667,8 @@ function closeBoyfriendModal() {
 // Custom Photos Management
 function handleUpdateCardImage(cardId: string, base64: string) {
   saveCustomImage(cardId, base64)
-  const admin = loadAdminConfig()
-  if (admin.customCards) {
-    const card = admin.customCards.find(c => c.id === cardId)
-    if (card) {
-      card.customImage = base64
-      saveAdminConfig(admin)
-    }
-  }
   cardDefs.value = loadCardDefinitions()
-  // 同步上传至服务器永久持久化
-  apiUploadPhoto(cardId, base64).catch(() => {})
+  // AdminModal saves the image in its versioned config transaction.
 }
 
 function handleResetCard(cardId: string) {
@@ -614,8 +678,13 @@ function handleResetCard(cardId: string) {
 
 // Coupon Actions
 function handleRedeemCoupon(couponId: string) {
+  if (isResolving.value) return
+  return runClientAction('redeem', { level: currentLevel.value, slotCount: slotCards.value.length, remaining: remainingCardsCount.value, couponId }, () => handleRedeemCouponImpl(couponId))
+}
+
+async function handleRedeemCouponImpl(couponId: string) {
   sound.playPowerUp()
-  loveCoupons.value = redeemCoupon(couponId)
+  loveCoupons.value = await redeemCoupon(couponId)
 }
 
 function openCouponsFromWin() {
@@ -642,7 +711,47 @@ function triggerVictoryConfetti() {
   })
 }
 
+let connecting = false
+let webSyncTimer: ReturnType<typeof setInterval> | undefined
+let webSyncPending = false
+async function syncPageState() {
+  if (onlineRequired || webSyncPending || document.hidden) return
+  webSyncPending = true
+  try {
+    const response = await clientFetch(`${getBaseUrl()}/api/state`, { cache: 'no-store', signal: AbortSignal.timeout(5000) })
+    if (!response.ok) throw new Error('State unavailable')
+    const data = await response.json()
+    acceptServerState(data.state)
+  } catch { /* Keep drafts intact; native clients are locked by their strict session checks. */ }
+  finally { webSyncPending = false }
+}
+async function connectOnline() {
+  if (connecting || document.hidden) return
+  connecting = true
+  clearGameTimers()
+  allCards.value = []
+  showAdminModal.value = false
+  showCouponsModal.value = false
+  showBoyfriendModal.value = false
+  try {
+    const snapshot = await openOnlineSession(getBaseUrl())
+    currentAdminConfig.value = acceptServerConfig(snapshot.config)
+    saveCoupons(snapshot.coupons)
+    loveCoupons.value = snapshot.coupons
+    cardDefs.value = loadCardDefinitions()
+    initLevel(currentLevel.value)
+    await recordClientEvent('ui_change', { control: 'online_ready' })
+    activateOnlineSession()
+  } catch { blockOnline('无法连接在线服务，请检查网络后重试') }
+  finally { connecting = false }
+}
+watch(onlineState, state => { if (onlineRequired && state !== 'ready') clearGameTimers() })
 onMounted(async () => {
+  if (onlineRequired) {
+    installClientLifecycle(() => { void connectOnline() })
+    await connectOnline()
+    return
+  }
   // Sync latest config and shared coupons from server
   try {
     const [config, coupons] = await Promise.all([
@@ -656,6 +765,9 @@ onMounted(async () => {
     console.warn('Initial server sync failed, running in local mode', e)
   }
 
+  await syncPageState()
+  webSyncTimer = setInterval(() => { void syncPageState() }, 2000)
+  document.addEventListener('visibilitychange', syncPageState)
   initLevel(1)
 
   if (
@@ -668,6 +780,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (webSyncTimer) clearInterval(webSyncTimer)
+  document.removeEventListener('visibilitychange', syncPageState)
+  stopClientSession()
   clearGameTimers()
   clearTimeout(logoClickTimer)
 })

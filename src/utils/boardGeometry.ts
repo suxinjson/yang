@@ -1,9 +1,21 @@
-﻿// Shared by generation, coverage and rendering. Positions use these grid steps.
+// Shared by generation, coverage and rendering. Positions use these grid steps.
 import type { GameSettings } from '../types/game'
 import { CARD_GEOMETRY, defaultGameSettings } from '../../shared/gameConfig.js'
 
 export function getBoardLayout(settings: GameSettings = defaultGameSettings()) {
-  return { ...CARD_GEOMETRY, width: settings.boardWidth, height: settings.boardHeight }
+  const cardWidth = settings.cardWidth || CARD_GEOMETRY.cardWidth
+  const cardHeight = settings.cardHeight || CARD_GEOMETRY.cardHeight
+  const stepX = cardWidth + 4
+  const stepY = cardHeight + 4
+  return {
+    padding: CARD_GEOMETRY.padding,
+    cardWidth,
+    cardHeight,
+    stepX,
+    stepY,
+    width: settings.boardWidth,
+    height: settings.boardHeight
+  }
 }
 
 export const BOARD_LAYOUT = getBoardLayout()

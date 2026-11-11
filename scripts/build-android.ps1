@@ -3,6 +3,19 @@ param(
     [string]$SdkPath = $env:ANDROID_HOME
 )
 $ErrorActionPreference = 'Stop'
+function Invoke-AndroidCommand {
+    param([string]$Executable, [string[]]$Arguments)
+    $savedPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell treats Java's informational stderr as an error when redirected.
+        $ErrorActionPreference = 'Continue'
+        & $Executable @Arguments
+        $commandExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedPreference
+    }
+    if ($commandExitCode -ne 0) { throw "Android build command failed ($commandExitCode): $Executable" }
+}
 $projectRoot = Split-Path $PSScriptRoot -Parent
 if (-not $JdkPath -or -not (Test-Path "$JdkPath/bin/java.exe")) { throw 'Set JAVA_HOME or pass -JdkPath (Java 21).' }
 if (-not $SdkPath -or -not (Test-Path "$SdkPath/platforms/android-36")) { throw 'Set ANDROID_HOME or pass -SdkPath (Android SDK 36).' }
@@ -33,17 +46,13 @@ try {
     $env:YANG_ANDROID_KEY_PASSWORD = $env:YANG_ANDROID_STORE_PASSWORD
     $env:YANG_ANDROID_KEY_ALIAS = 'ganglegang'
     if (-not (Test-Path $keystoreFile)) {
-        & "$JdkPath/bin/keytool.exe" -genkeypair -keystore $keystoreFile -storetype JKS -alias ganglegang -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=Ganglegang, OU=Android, O=Ganglegang, C=CN' -storepass:env YANG_ANDROID_STORE_PASSWORD -keypass:env YANG_ANDROID_KEY_PASSWORD
-        if ($LASTEXITCODE -ne 0) { throw 'Keystore generation failed.' }
+        Invoke-AndroidCommand -Executable "$JdkPath/bin/keytool.exe" -Arguments @('-genkeypair', '-keystore', $keystoreFile, '-storetype', 'JKS', '-alias', 'ganglegang', '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000', '-dname', 'CN=Ganglegang, OU=Android, O=Ganglegang, C=CN', '-storepass:env', 'YANG_ANDROID_STORE_PASSWORD', '-keypass:env', 'YANG_ANDROID_KEY_PASSWORD')
     }
-    & npm.cmd run build:android
-    if ($LASTEXITCODE -ne 0) { throw 'Web build failed.' }
-    & "$projectRoot/android/gradlew.bat" -p "$projectRoot/android" assembleRelease --console=plain
-    if ($LASTEXITCODE -ne 0) { throw 'Android build failed.' }
+    Invoke-AndroidCommand -Executable 'npm.cmd' -Arguments @('run', 'build:android')
+    Invoke-AndroidCommand -Executable "$projectRoot/android/gradlew.bat" -Arguments @('-p', "$projectRoot/android", 'assembleRelease', '--console=plain')
     $sourceApk = "$projectRoot/android/app/build/outputs/apk/release/app-release.apk"
     $buildTools = Get-ChildItem "$SdkPath/build-tools" -Directory | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
-    & "$($buildTools.FullName)/apksigner.bat" verify --verbose $sourceApk
-    if ($LASTEXITCODE -ne 0) { throw 'APK signature verification failed.' }
+    Invoke-AndroidCommand -Executable "$($buildTools.FullName)/apksigner.bat" -Arguments @('verify', '--verbose', $sourceApk)
     $outputDirectory = "$projectRoot/artifacts/android"
     New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
     $versionMatch = Select-String -Path "$projectRoot/android/app/build.gradle" -Pattern 'versionName "([^"]+)"'

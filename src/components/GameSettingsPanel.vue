@@ -2,7 +2,7 @@
   <div class="space-y-4" data-testid="game-settings">
     <div class="rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sky-950">
       <h4 class="font-black text-sm">棋盘与关卡配置</h4>
-      <p class="mt-1 text-[11px] leading-relaxed">保存后在下一关或重新开始时应用，当前牌局保持原布局。所有牌数按 3 的倍数生成，开局保留可通关路径。</p>
+      <p class="mt-1 text-[11px] leading-relaxed">保存后在下一关或重新开始时应用，当前牌局保持原布局。卡片尺寸与堆叠难度后台可配置，支持多层交错堆叠与立体主牌山，彻底告别单调对对碰！</p>
     </div>
     <div class="grid grid-cols-2 gap-3">
       <label class="space-y-1 font-bold">棋盘宽度
@@ -12,6 +12,16 @@
       <label class="space-y-1 font-bold">棋盘高度
         <input v-model.number="draft.boardHeight" aria-label="棋盘高度" type="number" min="420" max="640" step="10" class="config-input" />
         <span class="block text-[10px] text-gray-500 font-normal">420–640，随宽度等比缩放</span>
+      </label>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="space-y-1 font-bold">卡片宽度
+        <input v-model.number="draft.cardWidth" aria-label="卡片宽度" type="number" min="48" max="80" step="2" class="config-input" />
+        <span class="block text-[10px] text-gray-500 font-normal">48–80px，支持大卡片更醒目</span>
+      </label>
+      <label class="space-y-1 font-bold">卡片高度
+        <input v-model.number="draft.cardHeight" aria-label="卡片高度" type="number" min="56" max="96" step="2" class="config-input" />
+        <span class="block text-[10px] text-gray-500 font-normal">56–96px，支持大卡片更醒目</span>
       </label>
     </div>
     <fieldset v-for="(level, index) in draft.levels" :key="index" class="rounded-2xl border border-pink-200 bg-pink-50/40 p-3 space-y-3">
@@ -32,7 +42,7 @@
         当前范围最多容纳 {{ capacities[index] }} 张；牌型不超过现有种类。随机扰动控制位置偏移，0 为整齐排列，100 为最大偏移。每局的牌面、空隙与数量仍会随机。
       </p>
     </fieldset>
-    <p class="text-[11px] text-gray-500 leading-relaxed">最少 / 最多张数：6–240；牌型：1–12；层数：1–8；横向 / 纵向范围：60–100%。保存时自动修正非三倍数、颠倒区间和超过布局容量的牌数。</p>
+    <p class="text-[11px] text-gray-500 leading-relaxed">最少 / 最多张数：6–240；牌型：1–12；层数：1–8；范围：60–100%；卡片宽：48–80px，高：56–96px。保存时自动修正并保障可通关。</p>
     <p v-if="adjusted" role="status" class="text-[11px] text-amber-700">已按允许范围和布局容量修正参数，请核对当前数值。</p>
     <div class="flex gap-2">
       <button class="flex-1 rounded-xl bg-slate-900 text-white py-2.5 font-black disabled:opacity-50" :disabled="busy" @click="save">保存关卡配置</button>
@@ -73,7 +83,7 @@ function prepareSettings() {
 }
 
 function save() { emit('save', prepareSettings()) }
-defineExpose({ prepareSettings })
+defineExpose({ prepareSettings, hasChanges: () => JSON.stringify(normalizeGameSettings(draft.value)) !== JSON.stringify(normalizeGameSettings(props.settings)) })
 </script>
 
 <style scoped>

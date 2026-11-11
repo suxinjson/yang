@@ -2,6 +2,8 @@ import type { AdminConfig, TaskItem } from '../types/game'
 import { apiSaveConfig, apiFetchConfig } from './api'
 import { normalizeGameSettings, defaultGameSettings } from '../../shared/gameConfig.js'
 import { normalizeBoyfriendSettings } from '../../shared/boyfriendConfig.js'
+import { onlineRequired } from './clientSession'
+import { serverState } from './serverState'
 
 const ADMIN_STORAGE_KEY = 'couple_game_admin_config_v3'
 
@@ -149,9 +151,27 @@ export function normalizeAdminConfig(input: unknown): AdminConfig {
 
 export type ConfigSaveResult = 'synced' | 'local' | 'failed'
 let saveQueue: Promise<unknown> = Promise.resolve()
+const ownConfigVersions = new Map<string, string>()
 
-export function saveAdminConfig(config: AdminConfig): Promise<ConfigSaveResult> {
+export function saveAdminConfig(config: AdminConfig, expectedVersion?: string, onSavedVersion?: (version: string) => void): Promise<ConfigSaveResult> {
   const snapshot = normalizeAdminConfig(config)
+  if (onlineRequired || expectedVersion) {
+    const pending = saveQueue.then(async (): Promise<ConfigSaveResult> => {
+      let expected = expectedVersion
+      const visited = new Set<string>()
+      while (expected && ownConfigVersions.has(expected) && !visited.has(expected)) {
+        visited.add(expected)
+        expected = ownConfigVersions.get(expected)
+      }
+      let savedVersion: string | undefined
+      if (!await apiSaveConfig(snapshot, expected, version => { savedVersion = version; onSavedVersion?.(version) })) return 'failed'
+      if (expected && savedVersion && expected !== savedVersion) ownConfigVersions.set(expected, savedVersion)
+      localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(serverState.value?.config || snapshot))
+      return 'synced'
+    })
+    saveQueue = pending.catch(() => {})
+    return pending.catch(() => 'failed')
+  }
   try {
     localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(snapshot))
   } catch (e) {
@@ -159,7 +179,7 @@ export function saveAdminConfig(config: AdminConfig): Promise<ConfigSaveResult> 
     return Promise.resolve('failed')
   }
   // Serialize snapshots so a slower old save cannot overwrite a newer change.
-  const pending = saveQueue.then(async (): Promise<ConfigSaveResult> => await apiSaveConfig(snapshot) ? 'synced' : 'local')
+  const pending = saveQueue.then(async (): Promise<ConfigSaveResult> => await apiSaveConfig(snapshot, expectedVersion) ? 'synced' : 'local')
   saveQueue = pending.catch(() => {})
   return pending
 }
@@ -175,7 +195,14 @@ export async function syncAdminConfigFromServer(): Promise<AdminConfig> {
   } catch (e) {
     console.warn('Sync config failed', e)
   }
+  if (onlineRequired) throw new Error('Online config unavailable')
   return loadAdminConfig()
+}
+
+export function acceptServerConfig(config: AdminConfig) {
+  const normalized = normalizeAdminConfig(config)
+  localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(normalized))
+  return normalized
 }
 
 export function getActiveBfPhoto(config: AdminConfig): string {

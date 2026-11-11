@@ -1,5 +1,6 @@
 import type { CardDefinition } from '../types/game'
 import { loadAdminConfig, getActiveBfProfile } from './adminConfig'
+import { serverState } from './serverState'
 
 // Default Card Definitions with personalized couple memes
 export const DEFAULT_CARD_DEFINITIONS: CardDefinition[] = [
@@ -213,7 +214,7 @@ export function loadCardDefinitions(): CardDefinition[] {
     return {
       ...def,
       staticImage: staticImg,
-      customImage: def.customImage || savedUserPhotos[def.id] || undefined
+      customImage: def.customImage || (!serverState.value ? savedUserPhotos[def.id] : undefined)
     }
   })
 }
