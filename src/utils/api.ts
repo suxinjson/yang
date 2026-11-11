@@ -1,26 +1,89 @@
 import type { AdminConfig, LoveCoupon } from '../types/game'
 
-// Get current server base URL (in webview or browser, it defaults to window.location.origin)
-const BASE_URL = typeof window !== 'undefined' ? window.location.origin : ''
+const STORAGE_API_KEY = 'ganglegang_api_url'
+const TOKEN_KEY = 'ganglegang_admin_token'
+
+/**
+ * 动态获取后端 API 基础地址：
+ * 1. 优先使用本地配置存储的自定义服务器地址 (便于在原生 APK 或测试环境中随时切换)
+ * 2. 其次使用环境变量 VITE_API_URL (编译期传入)
+ * 3. 浏览器端默认取 window.location.origin
+ */
+export function getBaseUrl(): string {
+  if (typeof window === 'undefined') return ''
+
+  const savedUrl = localStorage.getItem(STORAGE_API_KEY)
+  if (savedUrl) return savedUrl.trim().replace(/\/+$/, '')
+
+  const envUrl = (import.meta as any).env?.VITE_API_URL
+  if (envUrl) return envUrl.trim().replace(/\/+$/, '')
+
+  // 如果在原生 Capacitor 环境中（origin 为 localhost），提示或默认使用当前网页宿主
+  return window.location.origin
+}
+
+export function setCustomBaseUrl(url: string) {
+  if (typeof window === 'undefined') return
+  if (url) {
+    localStorage.setItem(STORAGE_API_KEY, url.trim().replace(/\/+$/, ''))
+  } else {
+    localStorage.removeItem(STORAGE_API_KEY)
+  }
+}
+
+export function getAdminToken(): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export function setAdminToken(token: string | null) {
+  if (typeof window === 'undefined') return
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token)
+  } else {
+    localStorage.removeItem(TOKEN_KEY)
+  }
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  }
+  const token = getAdminToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  return headers
+}
 
 export async function apiLogin(password: string): Promise<boolean> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/admin/login`, {
+    const res = await fetch(`${baseUrl}/api/admin/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password })
     })
     const data = await res.json()
-    return !!data.success
+    if (data.success && data.token) {
+      setAdminToken(data.token)
+      return true
+    }
+    return false
   } catch (e) {
     console.warn('API login offline fallback', e)
-    return password === 'admin'
+    if (password === 'admin') {
+      setAdminToken('offline_token_' + Date.now())
+      return true
+    }
+    return false
   }
 }
 
 export async function apiFetchConfig(): Promise<AdminConfig | null> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/config`)
+    const res = await fetch(`${baseUrl}/api/config`)
     if (res.ok) {
       return await res.json()
     }
@@ -31,10 +94,11 @@ export async function apiFetchConfig(): Promise<AdminConfig | null> {
 }
 
 export async function apiSaveConfig(config: AdminConfig): Promise<boolean> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/config`, {
+    const res = await fetch(`${baseUrl}/api/config`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(config)
     })
     return res.ok
@@ -45,8 +109,9 @@ export async function apiSaveConfig(config: AdminConfig): Promise<boolean> {
 }
 
 export async function apiFetchCoupons(): Promise<LoveCoupon[]> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/coupons`)
+    const res = await fetch(`${baseUrl}/api/coupons`)
     if (res.ok) {
       return await res.json()
     }
@@ -57,8 +122,9 @@ export async function apiFetchCoupons(): Promise<LoveCoupon[]> {
 }
 
 export async function apiAddCoupon(coupon: LoveCoupon): Promise<boolean> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/coupons`, {
+    const res = await fetch(`${baseUrl}/api/coupons`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(coupon)
@@ -71,8 +137,9 @@ export async function apiAddCoupon(coupon: LoveCoupon): Promise<boolean> {
 }
 
 export async function apiRedeemCoupon(id: string): Promise<boolean> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/coupons/redeem`, {
+    const res = await fetch(`${baseUrl}/api/coupons/redeem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id })
@@ -85,8 +152,12 @@ export async function apiRedeemCoupon(id: string): Promise<boolean> {
 }
 
 export async function apiResetCoupons(): Promise<boolean> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/coupons/reset`, { method: 'POST' })
+    const res = await fetch(`${baseUrl}/api/coupons/reset`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    })
     return res.ok
   } catch (e) {
     console.warn('Failed to reset coupons on server', e)
@@ -95,10 +166,11 @@ export async function apiResetCoupons(): Promise<boolean> {
 }
 
 export async function apiUploadPhoto(cardId: string, base64: string): Promise<string | null> {
+  const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${BASE_URL}/api/upload`, {
+    const res = await fetch(`${baseUrl}/api/upload`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ cardId, base64 })
     })
     const data = await res.json()

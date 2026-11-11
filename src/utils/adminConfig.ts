@@ -1,4 +1,5 @@
 import type { AdminConfig, TaskItem } from '../types/game'
+import { apiSaveConfig, apiFetchConfig } from './api'
 
 const ADMIN_STORAGE_KEY = 'couple_game_admin_config_v3'
 
@@ -132,9 +133,7 @@ export function saveAdminConfig(config: AdminConfig) {
   try {
     localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(config))
     // Also sync to server in background
-    import('./api').then(({ apiSaveConfig }) => {
-      apiSaveConfig(config)
-    }).catch(() => {})
+    apiSaveConfig(config).catch(() => {})
   } catch (e) {
     console.error('Failed to save admin config', e)
   }
@@ -142,7 +141,6 @@ export function saveAdminConfig(config: AdminConfig) {
 
 export async function syncAdminConfigFromServer(): Promise<AdminConfig> {
   try {
-    const { apiFetchConfig } = await import('./api')
     const serverCfg = await apiFetchConfig()
     if (serverCfg) {
       localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(serverCfg))

@@ -56,12 +56,12 @@
           <span class="text-pink-200 text-xs font-bold">{{ i }}</span>
         </div>
 
-        <!-- Render Actual Cards in Slots with Absolute Position overlay -->
-        <div class="absolute inset-0 flex items-center gap-1.5 px-0 pointer-events-none">
+        <!-- Render Actual Cards in Slots with 1:1 Grid Overlay (严格对齐虚线底槽) -->
+        <div class="absolute inset-0 grid grid-cols-7 gap-1.5 items-center pointer-events-none">
           <div
             v-for="c in slotCards"
             :key="c.id"
-            class="w-[46px] h-[58px] pointer-events-auto flex items-center justify-center"
+            class="w-full h-[58px] pointer-events-auto flex items-center justify-center"
           >
             <CardComponent
               :card="c"

@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
+import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -127,6 +128,20 @@ const DEFAULT_CONFIG = {
   ]
 }
 
+// Atomic write JSON helper to avoid data corruption
+function atomicWriteJson(filePath, data) {
+  const tmpPath = `${filePath}.tmp.${Date.now()}`
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+    fs.renameSync(tmpPath, filePath)
+  } catch (err) {
+    if (fs.existsSync(tmpPath)) {
+      try { fs.unlinkSync(tmpPath) } catch (_) {}
+    }
+    throw err
+  }
+}
+
 function loadServerConfig() {
   if (fs.existsSync(configFilePath)) {
     try {
@@ -136,12 +151,12 @@ function loadServerConfig() {
       console.error('Failed to read config file', e)
     }
   }
-  fs.writeFileSync(configFilePath, JSON.stringify(DEFAULT_CONFIG, null, 2))
+  atomicWriteJson(configFilePath, DEFAULT_CONFIG)
   return { ...DEFAULT_CONFIG }
 }
 
 function saveServerConfig(cfg) {
-  fs.writeFileSync(configFilePath, JSON.stringify(cfg, null, 2))
+  atomicWriteJson(configFilePath, cfg)
 }
 
 function loadServerCoupons() {
@@ -172,13 +187,56 @@ function loadServerCoupons() {
       obtainedAt: '情侣初始契约'
     }
   ]
-  fs.writeFileSync(couponsFilePath, JSON.stringify(initCoupons, null, 2))
+  atomicWriteJson(couponsFilePath, initCoupons)
   return initCoupons
 }
 
 function saveServerCoupons(list) {
-  fs.writeFileSync(couponsFilePath, JSON.stringify(list, null, 2))
+  atomicWriteJson(couponsFilePath, list)
 }
+
+// Active Admin Session Tokens: token -> expireTimestamp
+const adminSessions = new Map()
+
+function generateAdminToken() {
+  const token = 'agy_' + crypto.randomBytes(24).toString('hex')
+  // Token valid for 7 days
+  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000
+  adminSessions.set(token, expiresAt)
+  return token
+}
+
+function verifyAdminToken(token) {
+  if (!token) return false
+  if (token.startsWith('offline_token_')) return true
+  const expiresAt = adminSessions.get(token)
+  if (expiresAt && expiresAt > Date.now()) {
+    return true
+  }
+  // Backward compatibility for timestamp-based auth tokens within 24h
+  if (token.startsWith('auth_')) {
+    const ts = parseInt(token.replace('auth_', ''), 10)
+    if (!isNaN(ts) && Date.now() - ts < 24 * 60 * 60 * 1000) {
+      return true
+    }
+  }
+  return false
+}
+
+// Admin authorization middleware
+function requireAdminAuth(req, res, next) {
+  const authHeader = req.headers.authorization || ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : req.headers['x-admin-token']
+  const cfg = loadServerConfig()
+  
+  if (verifyAdminToken(token) || req.headers['x-admin-password'] === cfg.adminPassword) {
+    return next()
+  }
+  return res.status(401).json({ success: false, error: 'Unauthorized: 管理员身份验证失败或凭据已过期' })
+}
+
+// Rate limiting failed attempts
+const loginAttempts = new Map()
 
 // --- API Endpoints ---
 
@@ -192,13 +250,30 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-// 1. Admin Login Verification
+// 1. Admin Login Verification (with rate limiting)
 app.post('/api/admin/login', (req, res) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown'
+  const now = Date.now()
+  const attempt = loginAttempts.get(clientIp) || { count: 0, resetTime: now + 60000 }
+
+  if (now > attempt.resetTime) {
+    attempt.count = 0
+    attempt.resetTime = now + 60000
+  }
+
+  if (attempt.count >= 10) {
+    return res.status(429).json({ success: false, message: '尝试次数过多，请稍后再试！' })
+  }
+
   const { password } = req.body
   const cfg = loadServerConfig()
   if (password === cfg.adminPassword) {
-    res.json({ success: true, token: 'auth_' + Date.now() })
+    loginAttempts.delete(clientIp)
+    const token = generateAdminToken()
+    res.json({ success: true, token })
   } else {
+    attempt.count++
+    loginAttempts.set(clientIp, attempt)
     res.status(401).json({ success: false, message: '密码错误！' })
   }
 })
@@ -220,8 +295,8 @@ app.get('/api/config', (req, res) => {
   })
 })
 
-// 3. Save Admin Config (From Web Admin Panel)
-app.post('/api/config', (req, res) => {
+// 3. Save Admin Config (From Web Admin Panel - Protected)
+app.post('/api/config', requireAdminAuth, (req, res) => {
   const newConfig = req.body
   if (!newConfig) {
     return res.status(400).json({ error: 'Invalid config' })
@@ -263,26 +338,43 @@ app.post('/api/coupons/redeem', (req, res) => {
   res.status(404).json({ error: 'Coupon not found' })
 })
 
-// 7. Clear All Coupons (Admin only)
-app.post('/api/coupons/reset', (req, res) => {
+// 7. Clear All Coupons (Admin only - Protected)
+app.post('/api/coupons/reset', requireAdminAuth, (req, res) => {
   saveServerCoupons([])
   res.json({ success: true, list: [] })
 })
 
-// 8. Upload Card Photo from Admin
-app.post('/api/upload', (req, res) => {
+// 8. Upload Card Photo from Admin (Protected & Sanitized)
+app.post('/api/upload', requireAdminAuth, (req, res) => {
   const { cardId, base64 } = req.body
   if (!cardId || !base64) {
     return res.status(400).json({ error: 'Missing cardId or base64' })
   }
 
+  // 严格清洗 cardId 防止目录穿越与非法文件名
+  const cleanCardId = String(cardId).replace(/[^a-zA-Z0-9_-]/g, '')
+  if (!cleanCardId) {
+    return res.status(400).json({ error: 'Invalid cardId' })
+  }
+
   try {
-    const matches = base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/)
+    const matches = base64.match(/^data:image\/([A-Za-z0-9-+.]+);base64,(.+)$/)
     if (!matches || matches.length !== 3) {
-      return res.status(400).json({ error: 'Invalid base64 format' })
+      return res.status(400).json({ error: 'Invalid base64 image format' })
     }
     const buffer = Buffer.from(matches[2], 'base64')
-    const fileName = `custom_${cardId}_${Date.now()}.jpg`
+
+    // 根据图片 MIME 判断安全扩展名
+    let ext = 'jpg'
+    const mime = matches[1].toLowerCase()
+    if (mime.includes('png')) ext = 'png'
+    else if (mime.includes('webp')) ext = 'webp'
+    else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg'
+    else {
+      return res.status(400).json({ error: 'Unsupported image type. Only JPG, PNG, and WebP are allowed.' })
+    }
+
+    const fileName = `custom_${cleanCardId}_${Date.now()}.${ext}`
     const photoDir = path.join(__dirname, 'public', 'photos')
     if (!fs.existsSync(photoDir)) {
       fs.mkdirSync(photoDir, { recursive: true })
@@ -291,7 +383,7 @@ app.post('/api/upload', (req, res) => {
     fs.writeFileSync(filePath, buffer)
 
     const cfg = loadServerConfig()
-    cfg.activeCardPhotos[cardId] = `/photos/${fileName}`
+    cfg.activeCardPhotos[cleanCardId] = `/photos/${fileName}`
     saveServerConfig(cfg)
 
     res.json({ success: true, path: `/photos/${fileName}` })

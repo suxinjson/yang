@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Archives & Temporary Deployment Bundles
+*.zip
+*.tar.gz
+deploy_bundle/
+.app-deploy.lock
+.app-update.*
+data/*.tmp.*
+
+# Android build artifacts
+android/app/build/
+android/.gradle/
+android/build/

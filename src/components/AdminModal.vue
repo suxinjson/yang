@@ -480,6 +480,7 @@ import { ref, computed } from 'vue'
 import type { AdminConfig, CardDefinition, TaskItem } from '../types/game'
 import { loadAdminConfig, saveAdminConfig } from '../utils/adminConfig'
 import { saveCoupons } from '../utils/coupons'
+import { apiLogin, apiResetCoupons } from '../utils/api'
 
 const props = defineProps<{
   cardDefs: CardDefinition[]
@@ -517,8 +518,10 @@ const currentBfText = computed(() => {
 })
 
 // Authentication
-function handleLogin() {
-  if (passwordInput.value === config.value.adminPassword) {
+async function handleLogin() {
+  const pwd = passwordInput.value.trim()
+  const success = await apiLogin(pwd)
+  if (success || pwd === config.value.adminPassword) {
     isAuthenticated.value = true
     sessionStorage.setItem('gang_admin_auth', 'true')
     loginError.value = ''
@@ -596,9 +599,10 @@ function handleChangePassword() {
   confirmPassword.value = ''
 }
 
-function resetAllCoupons() {
+async function resetAllCoupons() {
   if (confirm('确认清空当前所有的心愿存折记录吗？')) {
     saveCoupons([])
+    await apiResetCoupons()
     emit('config-updated')
     alert('心愿存折已清空！')
   }

@@ -1,5 +1,6 @@
 import type { LoveCoupon, CouponTarget } from '../types/game'
 import { loadAdminConfig } from './adminConfig'
+import { apiAddCoupon, apiRedeemCoupon, apiFetchCoupons } from './api'
 
 const COUPON_STORAGE_KEY = 'couple_game_love_coupons_v2'
 
@@ -161,9 +162,7 @@ export function generateRandomCoupon(context: string): LoveCoupon {
   existing.unshift(newCoupon)
   saveCoupons(existing)
 
-  import('./api').then(({ apiAddCoupon }) => {
-    apiAddCoupon(newCoupon)
-  }).catch(() => {})
+  apiAddCoupon(newCoupon).catch(() => {})
 
   return newCoupon
 }
@@ -174,16 +173,13 @@ export function redeemCoupon(id: string): LoveCoupon[] {
   if (target) {
     target.used = true
     saveCoupons(list)
-    import('./api').then(({ apiRedeemCoupon }) => {
-      apiRedeemCoupon(id)
-    }).catch(() => {})
+    apiRedeemCoupon(id).catch(() => {})
   }
   return list
 }
 
 export async function syncCouponsFromServer(): Promise<LoveCoupon[]> {
   try {
-    const { apiFetchCoupons } = await import('./api')
     const list = await apiFetchCoupons()
     if (list && list.length > 0) {
       saveCoupons(list)

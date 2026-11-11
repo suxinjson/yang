@@ -188,8 +188,9 @@ import type { CardItem, CardDefinition, LoveCoupon } from './types/game'
 import { sound } from './utils/sound'
 import { loadCardDefinitions, saveCustomImage, removeCustomImage } from './utils/cardThemes'
 import { generateLevel1, generateLevel2, generateLevel3, updateCardCoverage } from './utils/levelGenerator'
-import { loadCoupons, redeemCoupon, generateRandomCoupon, DEFAULT_COUPONS } from './utils/coupons'
-import { loadAdminConfig } from './utils/adminConfig'
+import { loadCoupons, redeemCoupon, generateRandomCoupon, syncCouponsFromServer } from './utils/coupons'
+import { loadAdminConfig, syncAdminConfigFromServer } from './utils/adminConfig'
+import { apiUploadPhoto } from './utils/api'
 
 // Components
 import CardComponent from './components/Card.vue'
@@ -395,6 +396,9 @@ function checkMatchElimination() {
       eliminatingIds.value.push(...ids)
       sound.playMatch()
 
+      // 关键修复：从撤回历史中彻底剔除已被三消的卡牌，防止消除后撤回产生“孤儿牌”导致死局
+      cardHistory.value = cardHistory.value.filter(h => !ids.includes(h.card.id))
+
       // Sparkle Confetti on match
       triggerMatchConfetti()
 
@@ -469,19 +473,30 @@ function handleReturnStaged(card: CardItem) {
 function handleUndo() {
   if (propsState.value.undo <= 0 || cardHistory.value.length === 0) return
 
-  const lastMove = cardHistory.value.pop()
-  if (!lastMove) return
+  // 严格寻找最近一张仍在卡槽或暂存区（未被消除）的卡牌进行安全撤回
+  let restored = false
+  while (cardHistory.value.length > 0) {
+    const lastMove = cardHistory.value.pop()
+    if (!lastMove) break
 
-  propsState.value.undo--
-  sound.playPowerUp()
+    const card = lastMove.card
+    if (card.status === 'slot' || card.status === 'staged') {
+      propsState.value.undo--
+      sound.playPowerUp()
 
-  const card = lastMove.card
-  // Remove from slot
-  slotCards.value = slotCards.value.filter(c => c.id !== card.id)
-  stagedCards.value = stagedCards.value.filter(c => c.id !== card.id)
+      slotCards.value = slotCards.value.filter(c => c.id !== card.id)
+      stagedCards.value = stagedCards.value.filter(c => c.id !== card.id)
 
-  card.status = 'board'
-  updateCardCoverage(allCards.value)
+      card.status = 'board'
+      updateCardCoverage(allCards.value)
+      restored = true
+      break
+    }
+  }
+
+  if (!restored) {
+    sound.playClick()
+  }
 }
 
 // Shuffle Board Cards (Props 3)
@@ -495,8 +510,11 @@ function handleShuffle() {
   sound.playPowerUp()
 
   const types = boardCards.map(c => c.type)
-  // Scramble types
-  types.sort(() => Math.random() - 0.5)
+  // 使用 Fisher-Yates (Knuth) 算法实现完全均匀随机洗牌
+  for (let i = types.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [types[i], types[j]] = [types[j], types[i]]
+  }
 
   boardCards.forEach((c, idx) => {
     c.type = types[idx]
@@ -540,6 +558,8 @@ function closeBoyfriendModal() {
 function handleUpdateCardImage(cardId: string, base64: string) {
   saveCustomImage(cardId, base64)
   cardDefs.value = loadCardDefinitions()
+  // 同步上传至服务器永久持久化
+  apiUploadPhoto(cardId, base64).catch(() => {})
 }
 
 function handleResetCard(cardId: string) {
@@ -580,8 +600,6 @@ function triggerVictoryConfetti() {
 onMounted(async () => {
   // Sync latest config and shared coupons from server
   try {
-    const { syncAdminConfigFromServer } = await import('./utils/adminConfig')
-    const { syncCouponsFromServer } = await import('./utils/coupons')
     await syncAdminConfigFromServer()
     cardDefs.value = loadCardDefinitions()
     const coupons = await syncCouponsFromServer()

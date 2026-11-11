@@ -19,6 +19,15 @@ export function checkCardOverlap(
   )
 }
 
+// Shuffle helper implementing Fisher-Yates uniform shuffle
+function shuffleArray<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
 // Generate Level 1 (Warm up, 6 cards total, 2 sets of 3)
 export function generateLevel1(availableTypes: string[]): CardItem[] {
   const selectedTypes = availableTypes.slice(0, 2)
@@ -26,8 +35,7 @@ export function generateLevel1(availableTypes: string[]): CardItem[] {
     selectedTypes[0], selectedTypes[0], selectedTypes[0],
     selectedTypes[1], selectedTypes[1], selectedTypes[1]
   ]
-  // Shuffle pool
-  pool.sort(() => Math.random() - 0.5)
+  shuffleArray(pool)
 
   // 6 positions: 4 in bottom layer, 2 on top layer covering bottom
   const positions: CardPosition[] = [
@@ -135,41 +143,45 @@ export function generateLevel3(availableTypes: string[]): CardItem[] {
     pool.push(t, t, t)
   }
 
-  pool.sort(() => Math.random() - 0.5)
+  shuffleArray(pool)
 
-  // Heart-shaped layout coordinates
+  // 严格居中且适配 360x390 视口的心形布局（防止尖端与边缘被截断）
   const heartCoords: [number, number][] = [
-    // Top bumps
-    [1.5, 0.8], [2.5, 0.8], [3.5, 0.8], [4.5, 0.8],
-    [1.0, 1.6], [2.0, 1.6], [3.0, 1.6], [4.0, 1.6], [5.0, 1.6],
-    // Middle wide body
-    [0.6, 2.4], [1.6, 2.4], [2.6, 2.4], [3.6, 2.4], [4.6, 2.4], [5.4, 2.4],
-    [1.0, 3.2], [2.0, 3.2], [3.0, 3.2], [4.0, 3.2], [5.0, 3.2],
-    // Lower taper
-    [1.6, 4.0], [2.6, 4.0], [3.6, 4.0], [4.4, 4.0],
-    [2.2, 4.8], [3.0, 4.8], [3.8, 4.8],
-    // Bottom tip
-    [3.0, 5.5]
-  ] // 23 positions on base layer 0
+    // 顶部双峰 (y=0.3 ~ 0.9)
+    [1.3, 0.3], [1.9, 0.3], [3.1, 0.3], [3.7, 0.3],
+    [0.8, 0.9], [1.6, 0.9], [3.4, 0.9], [4.2, 0.9],
+    // 中部最宽主体 (y=1.6 ~ 2.3)
+    [0.6, 1.6], [1.5, 1.6], [2.5, 1.6], [3.5, 1.6], [4.4, 1.6],
+    [0.9, 2.3], [1.9, 2.3], [3.1, 2.3], [4.1, 2.3],
+    // 下部收敛 (y=3.0 ~ 3.7)
+    [1.5, 3.0], [2.5, 3.0], [3.5, 3.0],
+    [2.0, 3.7], [3.0, 3.7],
+    // 底部爱心尖尖 (y=4.3, 完全在 390px 视口内，留足 40px 底边距)
+    [2.5, 4.3]
+  ] // 4 + 4 + 5 + 4 + 3 + 2 + 1 = 23 张基础层
 
   const positions: CardPosition[] = heartCoords.map(c => ({ x: c[0], y: c[1], layer: 0 }))
 
-  // Inner Heart Layer 1 (12 cards)
+  // 内层爱心 Layer 1 (12 cards)
   const innerCoords1: [number, number][] = [
-    [1.8, 1.8], [2.6, 1.8], [3.4, 1.8], [4.2, 1.8],
-    [1.6, 2.6], [2.4, 2.6], [3.2, 2.6], [4.0, 2.6], [4.4, 2.6],
-    [2.2, 3.4], [3.0, 3.4], [3.8, 3.4]
+    [1.4, 1.2], [3.6, 1.2],
+    [1.1, 1.8], [2.0, 1.8], [3.0, 1.8], [3.9, 1.8],
+    [1.6, 2.5], [2.5, 2.5], [3.4, 2.5],
+    [2.1, 3.2], [2.9, 3.2],
+    [2.5, 3.8]
   ]
   innerCoords1.forEach(c => positions.push({ x: c[0], y: c[1], layer: 1 }))
 
-  // Inner Peak Layer 2 (7 cards to reach 42)
+  // 核心立体层 Layer 2 & 3 (7 cards to reach 42)
   const innerCoords2: [number, number][] = [
-    [2.2, 2.2], [3.0, 2.2], [3.8, 2.2],
-    [2.6, 3.0], [3.4, 3.0],
-    [3.0, 3.8],
-    [3.0, 2.6]
+    [1.6, 1.9], [3.4, 1.9],
+    [2.0, 2.5], [3.0, 2.5],
+    [2.5, 3.1],
+    [2.5, 2.0]
   ]
-  innerCoords2.forEach((c, idx) => positions.push({ x: c[0], y: c[1], layer: 2 + (idx >= 6 ? 1 : 0) }))
+  innerCoords2.forEach(c => positions.push({ x: c[0], y: c[1], layer: 2 }))
+  // 顶峰最高单张
+  positions.push({ x: 2.5, y: 2.5, layer: 3 })
 
   const finalPositions = positions.slice(0, 42)
 

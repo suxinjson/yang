@@ -98,7 +98,8 @@ const cardStyle = computed(() => {
 
   // Inside Slot or Staged
   return {
-    width: '46px',
+    width: '100%',
+    maxWidth: '46px',
     height: '56px',
     position: 'relative' as const,
     zIndex: 5,
