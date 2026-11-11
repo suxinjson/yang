@@ -22,27 +22,23 @@
         <!-- Prize Card -->
         <div
           v-if="rewardCoupon"
-          class="rounded-2xl p-3 border-2 border-dashed text-left mb-4 shadow-sm"
-          :class="rewardCoupon.target === 'girlfriend_pays' ? 'bg-amber-100/90 border-amber-400' : 'bg-rose-100/90 border-rose-300'"
+          class="rounded-2xl p-3 border-2 border-dashed text-left mb-4 shadow-sm bg-gradient-to-r from-rose-50 to-pink-50 border-rose-300"
         >
           <div class="flex items-center justify-between mb-1">
             <div class="flex items-center gap-1.5">
               <span class="text-2xl">{{ rewardCoupon.icon }}</span>
               <div>
-                <div class="text-xs font-black" :class="rewardCoupon.target === 'girlfriend_pays' ? 'text-amber-900' : 'text-rose-900'">
+                <div class="text-xs font-black text-rose-950">
                   {{ rewardCoupon.title }}
                 </div>
                 <div class="text-[9px] text-gray-500">已存入心愿存折</div>
               </div>
             </div>
-            <span
-              class="text-[9px] font-black px-1.5 py-0.5 rounded-full"
-              :class="rewardCoupon.target === 'girlfriend_pays' ? 'bg-amber-200 text-amber-900' : 'bg-rose-200 text-rose-900'"
-            >
-              {{ rewardCoupon.target === 'girlfriend_pays' ? '🧦 女友受罚任务' : '🎁 男友特权' }}
+            <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-200 text-rose-900">
+              🎁 专属心愿券
             </span>
           </div>
-          <p class="text-[11px] leading-tight" :class="rewardCoupon.target === 'girlfriend_pays' ? 'text-amber-800 font-medium' : 'text-rose-700'">
+          <p class="text-[11px] leading-tight text-rose-800 font-medium">
             {{ rewardCoupon.desc }}
           </p>
         </div>

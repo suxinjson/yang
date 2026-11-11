@@ -9,7 +9,7 @@
               <span>🎁</span>
               <span>情侣心愿存折</span>
             </h3>
-            <p class="text-[11px] text-rose-500">通关与救场惩罚记录，随时向对方兑现！</p>
+            <p class="text-[11px] text-rose-500">通关与救场记录的心愿互动，随时向对方出示兑现！</p>
           </div>
           <button
             class="w-7 h-7 rounded-full bg-rose-100 hover:bg-rose-200 text-rose-600 font-bold flex items-center justify-center text-xs"
@@ -30,19 +30,19 @@
           </button>
           <button
             class="px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1"
-            :class="activeTab === 'girlfriend_pays' ? 'bg-amber-500 text-white shadow-xs' : 'bg-white text-amber-700 border border-amber-200'"
-            @click="activeTab = 'girlfriend_pays'"
+            :class="activeTab === 'unredeemed' ? 'bg-rose-500 text-white shadow-xs' : 'bg-white text-rose-700 border border-rose-200'"
+            @click="activeTab = 'unredeemed'"
           >
-            <span>🧦 女友受罚/付出</span>
-            <span class="text-[10px] font-black">({{ gfCount }})</span>
+            <span>待兑现</span>
+            <span class="text-[10px] font-black">({{ unredeemedCount }})</span>
           </button>
           <button
             class="px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1"
-            :class="activeTab === 'boyfriend_pays' ? 'bg-sky-500 text-white shadow-xs' : 'bg-white text-sky-700 border border-sky-200'"
-            @click="activeTab = 'boyfriend_pays'"
+            :class="activeTab === 'redeemed' ? 'bg-gray-500 text-white shadow-xs' : 'bg-white text-gray-600 border border-gray-200'"
+            @click="activeTab = 'redeemed'"
           >
-            <span>🧋 男友买单</span>
-            <span class="text-[10px] font-black">({{ bfCount }})</span>
+            <span>已兑现</span>
+            <span class="text-[10px] font-black">({{ redeemedCount }})</span>
           </button>
         </div>
 
@@ -55,27 +55,19 @@
             :class="[
               coupon.used
                 ? 'bg-gray-100/80 border-gray-300 opacity-60'
-                : coupon.target === 'girlfriend_pays'
-                  ? 'bg-amber-50/50 border-amber-300 shadow-2xs hover:border-amber-400'
-                  : 'bg-white border-rose-200 shadow-2xs hover:border-rose-400'
+                : 'bg-white border-rose-200 shadow-2xs hover:border-rose-400'
             ]"
           >
-            <!-- Target Badge -->
+            <!-- Unified Badge -->
             <div class="absolute top-2 right-2 flex items-center gap-1">
-              <span
-                class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full"
-                :class="coupon.target === 'girlfriend_pays' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-sky-100 text-sky-800 border border-sky-300'"
-              >
-                {{ coupon.target === 'girlfriend_pays' ? '女友付出/受罚' : '男友兑现' }}
+              <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                🎁 专属心愿券
               </span>
             </div>
 
             <!-- Left Icon & Info -->
             <div class="flex items-start gap-2.5 pr-16">
-              <div
-                class="text-2xl p-1 rounded-xl border flex-shrink-0"
-                :class="coupon.target === 'girlfriend_pays' ? 'bg-amber-100 border-amber-200' : 'bg-rose-50 border-rose-100'"
-              >
+              <div class="text-2xl p-1 rounded-xl border flex-shrink-0 bg-rose-50 border-rose-100">
                 {{ coupon.icon }}
               </div>
               <div class="flex-1">
@@ -94,16 +86,15 @@
             <!-- Bottom Action -->
             <div class="mt-2 pt-2 border-t border-dashed border-gray-200 flex items-center justify-between">
               <span class="text-[10px] text-gray-400">
-                {{ coupon.used ? '该任务已完成' : '随时出示截图/点击执行' }}
+                {{ coupon.used ? '该心愿已兑现' : '随时出示向对方兑现' }}
               </span>
 
               <button
                 v-if="!coupon.used"
-                class="px-3 py-1 rounded-xl font-bold text-[11px] shadow-sm active:scale-95 transition-all text-white"
-                :class="coupon.target === 'girlfriend_pays' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-rose-500 hover:bg-rose-600'"
+                class="px-3 py-1 rounded-xl font-bold text-[11px] shadow-sm active:scale-95 transition-all text-white bg-rose-500 hover:bg-rose-600"
                 @click="$emit('redeem', coupon.id)"
               >
-                {{ coupon.target === 'girlfriend_pays' ? '完成此惩罚 ✓' : '向男友兑现 💖' }}
+                点击兑现 ✨
               </button>
             </div>
 
@@ -112,12 +103,12 @@
               v-if="coupon.used"
               class="stamp absolute right-3 top-3 border-2 border-red-500 text-red-500 font-black text-xs px-2 py-0.5 rounded rotate-12 uppercase pointer-events-none"
             >
-              ✓ 已执行兑现
+              ✓ 已兑现
             </div>
           </div>
 
           <div v-if="filteredCoupons.length === 0" class="text-center py-8 text-gray-400 text-xs">
-            暂无该类任务券，快去闯关抽取吧~
+            暂无心愿券，快去闯关抽取吧~
           </div>
         </div>
 
@@ -148,19 +139,20 @@ defineEmits<{
   (e: 'redeem', couponId: string): void
 }>()
 
-const activeTab = ref<'all' | 'girlfriend_pays' | 'boyfriend_pays'>('all')
+const activeTab = ref<'all' | 'unredeemed' | 'redeemed'>('all')
 
-const gfCount = computed(() => {
-  return props.coupons.filter(c => c.target === 'girlfriend_pays').length
+const unredeemedCount = computed(() => {
+  return props.coupons.filter(c => !c.used).length
 })
 
-const bfCount = computed(() => {
-  return props.coupons.filter(c => c.target === 'boyfriend_pays').length
+const redeemedCount = computed(() => {
+  return props.coupons.filter(c => c.used).length
 })
 
 const filteredCoupons = computed(() => {
-  if (activeTab.value === 'all') return props.coupons
-  return props.coupons.filter(c => c.target === activeTab.value)
+  if (activeTab.value === 'unredeemed') return props.coupons.filter(c => !c.used)
+  if (activeTab.value === 'redeemed') return props.coupons.filter(c => c.used)
+  return props.coupons
 })
 </script>
 

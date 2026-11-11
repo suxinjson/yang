@@ -527,7 +527,7 @@ function handleSummonBoyfriend() {
 
   const admin = loadAdminConfig()
   if (admin.summonCostEnabled) {
-    summonCostCoupon.value = generateRandomCoupon('召唤男友救场代价')
+    summonCostCoupon.value = generateRandomCoupon('召唤男友救场')
   } else {
     summonCostCoupon.value = undefined
   }

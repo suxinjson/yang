@@ -20,7 +20,7 @@ export interface CardDefinition {
   borderColor: string
 }
 
-export type CouponTarget = 'girlfriend_pays' | 'boyfriend_pays' // 女友付出(惩罚) vs 男友付出(奖励)
+export type CouponTarget = 'girlfriend_pays' | 'boyfriend_pays' // 趣味互动任务 vs 甜蜜特权礼券
 
 export interface LoveCoupon {
   id: string

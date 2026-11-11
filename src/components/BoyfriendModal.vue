@@ -40,17 +40,17 @@
           </p>
         </div>
 
-        <!-- Penalty / Cost Condition -->
-        <div v-if="penaltyCoupon" class="bg-amber-50 rounded-2xl p-3 text-left mb-4 border-2 border-dashed border-amber-300">
-          <div class="flex items-center gap-1.5 mb-1 text-[11px] font-black text-amber-900">
+        <!-- Bonus Wish Condition -->
+        <div v-if="penaltyCoupon" class="bg-rose-50 rounded-2xl p-3 text-left mb-4 border-2 border-dashed border-rose-300">
+          <div class="flex items-center gap-1.5 mb-1 text-[11px] font-black text-rose-900">
             <span>{{ penaltyCoupon.icon }}</span>
-            <span>救场代价契约：{{ penaltyCoupon.title }}</span>
+            <span>获得心愿券：{{ penaltyCoupon.title }}</span>
           </div>
-          <p class="text-[11px] text-amber-800 leading-snug">
+          <p class="text-[11px] text-rose-800 leading-snug">
             {{ penaltyCoupon.desc }}
           </p>
-          <div class="text-[9px] text-amber-600 mt-1 font-medium">
-            💡 已自动写入你的心愿存折，待会儿记得向男友兑现哦~
+          <div class="text-[9px] text-rose-600 mt-1 font-medium">
+            💡 已自动写入你的心愿存折，随时可以出示兑现哦~
           </div>
         </div>
 
@@ -59,7 +59,7 @@
           class="w-full py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-extrabold text-sm shadow-lg shadow-rose-300 active:scale-95 transition-all flex items-center justify-center gap-1.5"
           @click="$emit('close')"
         >
-          <span>接受契约！谢谢超帅男友~</span>
+          <span>收下心愿！谢谢超帅男友~</span>
           <span>🚀</span>
         </button>
       </div>

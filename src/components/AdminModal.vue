@@ -91,21 +91,21 @@
             :class="activeTab === 'rules' ? 'bg-slate-900 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'rules'"
           >
-            ⚖️ 奖惩概率与开关
+            ⚖️ 心愿概率与开关
           </button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
             :class="activeTab === 'gf_tasks' ? 'bg-amber-500 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'gf_tasks'"
           >
-            🧦 女友惩罚清单 ({{ config.girlfriendTasks.length }})
+            🧦 互动任务清单 ({{ config.girlfriendTasks.length }})
           </button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
             :class="activeTab === 'bf_rewards' ? 'bg-sky-500 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'bf_rewards'"
           >
-            🎁 男友奖励特权 ({{ config.boyfriendRewards.length }})
+            🎁 甜蜜特权清单 ({{ config.boyfriendRewards.length }})
           </button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
@@ -217,7 +217,7 @@
 
           </div>
 
-          <!-- TAB 2: 奖惩规则与概率 -->
+          <!-- TAB 2: 心愿规则与概率 -->
           <div v-if="activeTab === 'rules'" class="space-y-4">
             
             <!-- 概率滑块 -->
@@ -225,10 +225,10 @@
               <div class="flex items-center justify-between mb-2">
                 <span class="font-extrabold text-rose-950 flex items-center gap-1.5 text-xs">
                   <span>⚖️</span>
-                  <span>通关抽取比例：女友受罚 vs 男友买单</span>
+                  <span>心愿类型抽取比例</span>
                 </span>
                 <span class="text-xs font-black text-rose-600 bg-rose-200/80 px-2.5 py-0.5 rounded-full">
-                  {{ config.gfPenaltyRatio }}% 女友付出
+                  {{ config.gfPenaltyRatio }}% 互动任务
                 </span>
               </div>
 
@@ -243,25 +243,25 @@
               />
 
               <div class="flex justify-between items-center text-[10px] text-gray-500">
-                <span>0% (全员男友买单)</span>
-                <span class="text-rose-600 font-bold">推荐 75% 狠狠拿捏！</span>
-                <span>100% (全员女友干活)</span>
+                <span>0% (全为特权)</span>
+                <span class="text-rose-600 font-bold">推荐 50% ~ 75% 趣味互动！</span>
+                <span>100% (全为任务)</span>
               </div>
 
               <div class="mt-3 text-[11px] text-rose-800 bg-white/80 p-2.5 rounded-xl border border-rose-100">
-                当前设定：每次通关或救场抽卡时，有 <b>{{ config.gfPenaltyRatio }}%</b> 概率抽取女友付出任务（洗袜子/捏肩/喊哥哥等），有 <b>{{ 100 - config.gfPenaltyRatio }}%</b> 概率抽取男友付出特权（奶茶/大餐等）。
+                当前设定：每次通关或救场抽卡时，有 <b>{{ config.gfPenaltyRatio }}%</b> 概率抽取趣味互动任务，有 <b>{{ 100 - config.gfPenaltyRatio }}%</b> 概率抽取甜蜜特权礼券。
               </div>
             </div>
 
-            <!-- 救场代价开关 -->
+            <!-- 救场心愿开关 -->
             <div class="bg-amber-50/80 p-4 rounded-2xl border border-amber-200 flex items-center justify-between">
               <div>
                 <div class="font-extrabold text-amber-950 text-xs flex items-center gap-1">
                   <span>🦸‍♂️</span>
-                  <span>“召唤男友”救场代价开关</span>
+                  <span>“召唤男友”救场获得心愿开关</span>
                 </div>
                 <div class="text-[10px] text-amber-800 mt-0.5">
-                  开启后，女朋友点击召唤男友救场时，必须当场抽取一项女友付出任务作为代价
+                  开启后，点击召唤男友救场时，会同时抽取一张互动心愿券存入存折
                 </div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer ml-3">
@@ -277,16 +277,16 @@
 
           </div>
 
-          <!-- TAB 3: 女友惩罚任务清单 (CRUD) -->
+          <!-- TAB 3: 互动心愿任务清单 (CRUD) -->
           <div v-if="activeTab === 'gf_tasks'" class="space-y-3">
             <div class="flex items-center justify-between">
-              <span class="font-extrabold text-gray-900">🧦 女友惩罚/付出任务池 (可自由修改)</span>
+              <span class="font-extrabold text-gray-900">🧦 互动心愿任务池 (可自由修改)</span>
               <span class="text-[10px] text-amber-600 font-bold">共 {{ config.girlfriendTasks.length }} 项</span>
             </div>
 
             <!-- Add Task Form -->
             <div class="bg-amber-50/80 p-3 rounded-2xl border border-amber-200 space-y-2">
-              <div class="font-bold text-amber-950 text-[11px]">➕ 添加新惩罚任务</div>
+              <div class="font-bold text-amber-950 text-[11px]">➕ 添加新心愿任务</div>
               <div class="grid grid-cols-4 gap-1.5">
                 <input
                   type="text"
@@ -305,7 +305,7 @@
                 <input
                   type="text"
                   v-model="newGfTask.desc"
-                  placeholder="详细规则(如:给男友洗袜子一次并夸奖好香)"
+                  placeholder="详细规则(如:帮对方洗袜子一次并夸奖好香)"
                   class="flex-1 px-2.5 py-1.5 rounded-xl border border-amber-300 bg-white text-xs"
                   @keyup.enter="addGfTask"
                 />
@@ -371,7 +371,7 @@
                 <input
                   type="text"
                   v-model="newBfReward.desc"
-                  placeholder="特权说明(如:大杯加料，立即买单)"
+                  placeholder="特权说明(如:大杯加料，甜蜜畅饮)"
                   class="flex-1 px-2.5 py-1.5 rounded-xl border border-sky-300 bg-white text-xs"
                   @keyup.enter="addBfReward"
                 />
