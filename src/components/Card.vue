@@ -1,6 +1,7 @@
 <template>
   <div
     class="game-card select-none"
+    :data-card-id="card.id"
     :class="{
       'is-covered': card.isCovered,
       'is-clickable': !card.isCovered && card.status === 'board',
@@ -54,15 +55,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { CardItem, CardDefinition } from '../types/game'
 import { sound } from '../utils/sound'
 import { resolveAssetUrl } from '../utils/api'
+import { getBoardCardStyle } from '../utils/boardGeometry'
 
 const props = defineProps<{
   card: CardItem
   def?: CardDefinition
-  boardWidth?: number
   isEliminating?: boolean
 }>()
 
@@ -77,24 +78,15 @@ const displayImage = computed(() => {
   return raw ? resolveAssetUrl(raw) : null
 })
 
+watch(displayImage, () => { imageFailed.value = false })
+
 // Compute absolute position on the board based on card.x, card.y, and layer
 const cardStyle = computed(() => {
   if (props.card.status === 'board') {
-    // Standard unit step: 52px width, 60px height
-    const unitX = 54
-    const unitY = 62
-    const left = props.card.x * unitX + 16
-    const top = props.card.y * unitY + 16
-    const zIndex = props.card.layer * 10 + 1
-
     return {
       position: 'absolute' as const,
-      left: `${left}px`,
-      top: `${top}px`,
-      width: '56px',
-      height: '66px',
-      zIndex: zIndex,
-      transition: 'all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)'
+      ...getBoardCardStyle(props.card),
+      transition: 'filter 0.22s, opacity 0.22s'
     }
   }
 

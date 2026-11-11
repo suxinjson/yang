@@ -3,7 +3,7 @@
     <!-- 1. 移出 (铁了心救你) -->
     <button
       class="prop-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-white/95 border-2 border-pink-200 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-      :disabled="moveOutCount <= 0 || slotCount === 0"
+      :disabled="disabled || moveOutCount <= 0 || slotCount === 0"
       @click="$emit('use-move-out')"
     >
       <div class="text-xl mb-0.5">🔩</div>
@@ -14,7 +14,7 @@
     <!-- 2. 撤回 (钢了心后悔) -->
     <button
       class="prop-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-white/95 border-2 border-sky-200 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-      :disabled="undoCount <= 0 || slotCount === 0"
+      :disabled="disabled || undoCount <= 0 || !canUndo"
       @click="$emit('use-undo')"
     >
       <div class="text-xl mb-0.5">🛡️</div>
@@ -25,7 +25,7 @@
     <!-- 3. 洗牌 (魔力打乱) -->
     <button
       class="prop-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-white/95 border-2 border-amber-200 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-      :disabled="shuffleCount <= 0"
+      :disabled="disabled || shuffleCount <= 0"
       @click="$emit('use-shuffle')"
     >
       <div class="text-xl mb-0.5">🔀</div>
@@ -37,6 +37,7 @@
     <button
       class="prop-btn rescue-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-md shadow-pink-200 border-2 border-rose-300 active:scale-95 transition-all relative overflow-hidden"
       :class="{ 'animate-bounce shadow-rose-400 shadow-lg': isUrgent }"
+      :disabled="disabled"
       @click="$emit('summon-boyfriend')"
     >
       <div class="absolute -top-1 -right-1 bg-yellow-400 text-red-700 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full">
@@ -56,6 +57,8 @@ defineProps<{
   shuffleCount: number
   slotCount: number
   isUrgent: boolean
+  disabled: boolean
+  canUndo: boolean
 }>()
 
 defineEmits<{

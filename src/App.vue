@@ -76,7 +76,7 @@
     <main class="board-section w-full flex-1 flex flex-col items-center justify-center relative py-1">
       <div
         class="board-arena relative rounded-3xl bg-pink-100/35 border-2 border-dashed border-pink-200/80 shadow-inner flex items-center justify-center overflow-hidden"
-        style="aspect-ratio: 420 / 540;"
+        :style="{ aspectRatio: `${BOARD_LAYOUT.width} / ${BOARD_LAYOUT.height}` }"
         :aria-busy="isResolving"
       >
         <!-- Floating Romantic Background Doodles -->
@@ -190,13 +190,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import confetti from 'canvas-confetti'
-import type { CardItem, CardDefinition, LoveCoupon } from './types/game'
+import type { CardItem, CardDefinition, LoveCoupon, AdminConfig } from './types/game'
 import { sound } from './utils/sound'
 import { loadCardDefinitions, saveCustomImage, removeCustomImage } from './utils/cardThemes'
 import { generateLevel1, generateLevel2, generateLevel3, updateCardCoverage } from './utils/levelGenerator'
 import { loadCoupons, redeemCoupon, generateRandomCoupon, syncCouponsFromServer } from './utils/coupons'
-import { loadAdminConfig, syncAdminConfigFromServer } from './utils/adminConfig'
+import { loadAdminConfig, saveAdminConfig, syncAdminConfigFromServer } from './utils/adminConfig'
 import { apiUploadPhoto } from './utils/api'
+import { BOARD_LAYOUT } from './utils/boardGeometry'
 
 // Components
 import CardComponent from './components/Card.vue'
@@ -646,7 +647,7 @@ function triggerVictoryConfetti() {
 onMounted(async () => {
   // Sync latest config and shared coupons from server
   try {
-    await syncAdminConfigFromServer()
+    currentAdminConfig.value = await syncAdminConfigFromServer()
     cardDefs.value = loadCardDefinitions()
     const coupons = await syncCouponsFromServer()
     if (coupons && coupons.length > 0) {
