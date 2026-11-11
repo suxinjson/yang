@@ -1,0 +1,72 @@
+name: 自动构建与部署
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 编译打包与远程发布
+    runs-on: ubuntu-24.04
+    steps:
+    - name: 1. 拉取源码
+      uses: actions/checkout@v4
+
+    - name: 2. 安装 Node.js 环境
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: 'npm'
+
+    - name: 3. 安装依赖与前端构建
+      run: |
+        npm ci
+        npm run build
+
+    - name: 4. 准备部署压缩包
+      run: |
+        mkdir -p deploy_bundle
+        # 打包生产运行必需的精简产物
+        cp -r dist public server.js deploy Dockerfile compose.yaml package.json deploy_bundle/
+        tar -czf "update-bundle.tar.gz" -C deploy_bundle .
+
+    - name: 5. 远程 SSH 部署到服务器
+      env:
+        SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        SERVER_USER: ${{ secrets.SERVER_USER }}
+        SERVER_PORT: ${{ secrets.SERVER_PORT || '22' }}
+        SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
+        SERVER_DEPLOY_PATH: ${{ secrets.SERVER_DEPLOY_PATH || '~/ganglegang' }}
+      run: |
+        set -euo pipefail
+        SSH_KEY_PATH="$RUNNER_TEMP/deploy_id_ed25519"
+        printf '%s\n' "$SERVER_SSH_KEY" > "$SSH_KEY_PATH"
+        chmod 600 "$SSH_KEY_PATH"
+        KNOWN_HOSTS_PATH="$RUNNER_TEMP/known_hosts"
+        printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$KNOWN_HOSTS_PATH"
+        chmod 600 "$KNOWN_HOSTS_PATH"
+
+        SSH_OPTS=(-i "$SSH_KEY_PATH" -p "$SERVER_PORT" -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KNOWN_HOSTS_PATH")
+        SCP_OPTS=(-i "$SSH_KEY_PATH" -P "$SERVER_PORT" -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KNOWN_HOSTS_PATH")
+        REMOTE_TAR="/tmp/update-${GITHUB_RUN_ID}.tar.gz"
+        REMOTE_SCRIPT="/tmp/install-${GITHUB_RUN_ID}.sh"
+
+        echo ">>> [1/2] 上传升级包与安装脚本..."
+        scp "${SCP_OPTS[@]}" "update-bundle.tar.gz" "$SERVER_USER@$SERVER_HOST:$REMOTE_TAR"
+        scp "${SCP_OPTS[@]}" "deploy/install-update.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_SCRIPT"
+
+        echo ">>> [2/2] 执行加锁安装与健康探测..."
+        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "bash $REMOTE_SCRIPT $SERVER_DEPLOY_PATH $REMOTE_TAR"
+
+        # 清理远程临时文件
+        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "rm -f $REMOTE_TAR $REMOTE_SCRIPT"
+
+    - name: 6. 清理临时凭据
+      if: ${{ always() }}
+      run: rm -f "$RUNNER_TEMP/deploy_id_ed25519" "$RUNNER_TEMP/known_hosts"

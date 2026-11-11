@@ -1,0 +1,12 @@
+services:
+  ganglegang:
+    build: .
+    container_name: ganglegang
+    restart: unless-stopped
+    ports:
+      # 仅绑定本地 127.0.0.1，公网流量通过 Caddy 443 HTTPS 安全反代接入
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3000

@@ -1,0 +1,630 @@
+<template>
+  <div class="game-wrapper min-h-screen w-full flex flex-col items-center justify-between bg-gradient-to-b from-rose-100 via-pink-50 to-purple-50 text-gray-800 select-none overflow-x-hidden font-sans">
+    
+    <!-- Top App Navigation / Header Bar -->
+    <header class="w-full max-w-[440px] px-3 pt-3 pb-1 flex flex-col gap-1.5 z-20">
+      <div class="flex items-center justify-between">
+        <!-- Title & Slogan -->
+        <div class="flex items-center gap-1.5 select-none" @click="handleSecretLogoClick">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-rose-500 text-white flex items-center justify-center font-black text-sm shadow-sm shadow-rose-300">
+            钢
+          </div>
+          <div>
+            <h1 class="text-base font-black tracking-tight text-gray-900 leading-none">
+              《钢了钢》
+            </h1>
+            <p class="text-[10px] text-gray-500 font-medium leading-none mt-1">
+              第 {{ currentLevel }} 关 · {{ currentLevelName }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Quick Function Buttons -->
+        <div class="flex items-center gap-1.5">
+          <!-- Coupons Bag Button -->
+          <button
+            class="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-xl bg-white/95 border border-rose-200 text-rose-700 shadow-xs active:scale-95 transition-all"
+            @click="showCouponsModal = true"
+            title="查看情侣心愿存折"
+          >
+            <span>🎁</span>
+            <span class="relative">
+              存折
+              <span
+                v-if="unusedCouponsCount > 0"
+                class="absolute -top-1.5 -right-2.5 w-3.5 h-3.5 bg-red-500 text-white text-[8px] rounded-full flex items-center justify-center font-extrabold"
+              >
+                {{ unusedCouponsCount }}
+              </span>
+            </span>
+          </button>
+
+          <!-- Sound Toggle -->
+          <button
+            class="w-7 h-7 rounded-xl bg-white/95 border border-pink-200 text-gray-600 flex items-center justify-center text-xs active:scale-95 transition-all shadow-xs"
+            @click="toggleSound"
+            :title="soundEnabled ? '静音' : '开启音效'"
+          >
+            {{ soundEnabled ? '🔊' : '🔇' }}
+          </button>
+
+          <!-- Restart Level -->
+          <button
+            class="w-7 h-7 rounded-xl bg-white/95 border border-pink-200 text-gray-600 flex items-center justify-center text-xs active:scale-95 transition-all shadow-xs"
+            @click="restartCurrentLevel"
+            title="重新开始本关"
+          >
+            🔄
+          </button>
+        </div>
+      </div>
+
+      <!-- Level Progress Bar & Info -->
+      <div class="flex items-center justify-between text-[11px] px-1 text-gray-600 font-medium">
+        <div class="flex items-center gap-1">
+          <span>剩余卡牌:</span>
+          <span class="font-extrabold text-rose-600">{{ remainingCardsCount }}</span>
+          <span class="text-gray-400">/ {{ totalCardsCount }}</span>
+        </div>
+        <div class="text-[10px] text-gray-400 font-medium">
+          三消消除 · 7格卡槽
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Game Board Container -->
+    <main class="w-full flex-1 flex flex-col items-center justify-center relative overflow-hidden py-1">
+      <div
+        ref="boardRef"
+        class="board-arena relative w-[360px] h-[390px] rounded-3xl bg-pink-100/35 border-2 border-dashed border-pink-200/80 shadow-inner flex items-center justify-center overflow-hidden"
+      >
+        <!-- Floating Romantic Background Doodles -->
+        <div class="absolute inset-0 pointer-events-none opacity-20 flex flex-wrap gap-8 p-4 items-center justify-center text-2xl select-none">
+          <span>❤️</span><span>✨</span><span>🔩</span><span>🛡️</span><span>🎂</span><span>🧦</span><span>🧋</span>
+        </div>
+
+        <!-- Render All Active Board Cards -->
+        <CardComponent
+          v-for="card in activeBoardCards"
+          :key="card.id"
+          :card="card"
+          :def="getCardDef(card.type)"
+          @click-card="handleCardClick"
+        />
+
+        <!-- Empty State / All Cleared Sparkle -->
+        <div
+          v-if="remainingCardsCount === 0"
+          class="flex flex-col items-center justify-center text-rose-500 animate-bounce"
+        >
+          <span class="text-5xl mb-2">🎉</span>
+          <span class="text-sm font-black">全部消除啦！</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Controls & Tray Section -->
+    <footer class="w-full max-w-[440px] flex flex-col items-center pb-4 pt-1 z-20">
+      <!-- 7 Slots Bottom Tray -->
+      <SlotTray
+        :slot-cards="slotCards"
+        :staged-cards="stagedCards"
+        :card-defs="cardDefs"
+        :eliminating-ids="eliminatingIds"
+        @return-staged="handleReturnStaged"
+      />
+
+      <!-- Props & Power-Ups Bar -->
+      <PropsBar
+        :move-out-count="propsState.moveOut"
+        :undo-count="propsState.undo"
+        :shuffle-count="propsState.shuffle"
+        :slot-count="slotCards.length"
+        :is-urgent="slotCards.length >= 6"
+        @use-move-out="handleMoveOut"
+        @use-undo="handleUndo"
+        @use-shuffle="handleShuffle"
+        @summon-boyfriend="handleSummonBoyfriend"
+      />
+
+      <!-- Footer Subtitle -->
+      <div class="mt-2 text-center text-[10px] text-gray-400 font-medium">
+        铁了心爱你 · 钢了心宠你
+      </div>
+    </footer>
+
+    <!-- Modals -->
+    <!-- 1. Boyfriend Superhero Rescue Modal -->
+    <BoyfriendModal
+      v-if="showBoyfriendModal"
+      :custom-photo="boyfriendCustomPhoto"
+      :penalty-coupon="summonCostCoupon"
+      @close="closeBoyfriendModal"
+    />
+
+    <!-- 2. Win Celebration Modal -->
+    <WinModal
+      v-if="showWinModal"
+      :level="currentLevel"
+      :reward-coupon="latestWonCoupon"
+      :has-next-level="currentLevel < 3"
+      @next-level="handleNextLevel"
+      @replay-egg="restartCurrentLevel"
+      @open-coupons="openCouponsFromWin"
+    />
+
+    <!-- 3. Fail / Over Capacity Modal -->
+    <FailModal
+      v-if="showFailModal"
+      @summon="handleSummonFromFail"
+      @restart="restartCurrentLevel"
+    />
+
+    <!-- 4. Love Coupons Modal -->
+    <CouponsModal
+      v-if="showCouponsModal"
+      :coupons="loveCoupons"
+      @close="showCouponsModal = false"
+      @redeem="handleRedeemCoupon"
+    />
+
+    <!-- 5. Admin Control Center Modal (Password Protected) -->
+    <AdminModal
+      v-if="showAdminModal"
+      :card-defs="cardDefs"
+      @close="showAdminModal = false"
+      @config-updated="handleAdminConfigUpdated"
+      @update-card-image="handleUpdateCardImage"
+      @reset-card="handleResetCard"
+    />
+
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import confetti from 'canvas-confetti'
+import type { CardItem, CardDefinition, LoveCoupon } from './types/game'
+import { sound } from './utils/sound'
+import { loadCardDefinitions, saveCustomImage, removeCustomImage } from './utils/cardThemes'
+import { generateLevel1, generateLevel2, generateLevel3, updateCardCoverage } from './utils/levelGenerator'
+import { loadCoupons, redeemCoupon, generateRandomCoupon, DEFAULT_COUPONS } from './utils/coupons'
+import { loadAdminConfig } from './utils/adminConfig'
+
+// Components
+import CardComponent from './components/Card.vue'
+import SlotTray from './components/SlotTray.vue'
+import PropsBar from './components/PropsBar.vue'
+import BoyfriendModal from './components/BoyfriendModal.vue'
+import WinModal from './components/WinModal.vue'
+import FailModal from './components/FailModal.vue'
+import CouponsModal from './components/CouponsModal.vue'
+import AdminModal from './components/AdminModal.vue'
+
+// --- Game State ---
+const currentLevel = ref<number>(1)
+const allCards = ref<CardItem[]>([])
+const slotCards = ref<CardItem[]>([])
+const stagedCards = ref<CardItem[]>([])
+const eliminatingIds = ref<number[]>([])
+const cardHistory = ref<{ card: CardItem; fromStatus: 'board' | 'staged' }[]>([])
+
+// Card definitions and theme
+const cardDefs = ref<CardDefinition[]>(loadCardDefinitions())
+const soundEnabled = ref<boolean>(true)
+
+// Modals
+const showBoyfriendModal = ref<boolean>(false)
+const showWinModal = ref<boolean>(false)
+const showFailModal = ref<boolean>(false)
+const showCouponsModal = ref<boolean>(false)
+const showAdminModal = ref<boolean>(false)
+const latestWonCoupon = ref<LoveCoupon | undefined>(undefined)
+const summonCostCoupon = ref<LoveCoupon | undefined>(undefined)
+
+// Coupons
+const loveCoupons = ref<LoveCoupon[]>(loadCoupons())
+
+// Props Counts
+const propsState = ref({
+  moveOut: 3,
+  undo: 3,
+  shuffle: 3
+})
+
+// --- Computed Properties ---
+const activeBoardCards = computed(() => {
+  return allCards.value.filter(c => c.status === 'board')
+})
+
+const remainingCardsCount = computed(() => {
+  return allCards.value.filter(c => c.status === 'board').length
+})
+
+const totalCardsCount = computed(() => {
+  return allCards.value.length
+})
+
+const currentLevelName = computed(() => {
+  if (currentLevel.value === 1) return '铁了心'
+  if (currentLevel.value === 2) return '钢了心'
+  return '心心相印'
+})
+
+const boyfriendCustomPhoto = computed(() => {
+  const bf = cardDefs.value.find(d => d.id === 'boyfriend_photo')
+  return bf?.customImage || bf?.staticImage
+})
+
+let logoClickTimes = 0
+let logoClickTimer: any = null
+function handleSecretLogoClick() {
+  logoClickTimes++
+  clearTimeout(logoClickTimer)
+  if (logoClickTimes >= 5) {
+    logoClickTimes = 0
+    showAdminModal.value = true
+  } else {
+    logoClickTimer = setTimeout(() => {
+      logoClickTimes = 0
+    }, 1500)
+  }
+}
+
+function handleAdminConfigUpdated() {
+  cardDefs.value = loadCardDefinitions()
+}
+
+const unusedCouponsCount = computed(() => {
+  return loveCoupons.value.filter(c => !c.used).length
+})
+
+// --- Methods ---
+
+function getCardDef(type: string): CardDefinition | undefined {
+  return cardDefs.value.find(d => d.id === type)
+}
+
+function toggleSound() {
+  soundEnabled.value = !soundEnabled.value
+  sound.enabled = soundEnabled.value
+}
+
+// Start / Initialize Level
+function initLevel(level: number) {
+  currentLevel.value = level
+  slotCards.value = []
+  stagedCards.value = []
+  eliminatingIds.value = []
+  cardHistory.value = []
+  showWinModal.value = false
+  showFailModal.value = false
+
+  // Reset Props
+  propsState.value = {
+    moveOut: 3,
+    undo: 3,
+    shuffle: 3
+  }
+
+  const availableTypes = cardDefs.value.map(d => d.id)
+
+  let cards: CardItem[] = []
+  if (level === 1) {
+    cards = generateLevel1(availableTypes)
+  } else if (level === 2) {
+    cards = generateLevel2(availableTypes)
+  } else {
+    cards = generateLevel3(availableTypes)
+  }
+
+  updateCardCoverage(cards)
+  allCards.value = cards
+}
+
+function restartCurrentLevel() {
+  initLevel(currentLevel.value)
+}
+
+function handleNextLevel() {
+  if (currentLevel.value < 3) {
+    initLevel(currentLevel.value + 1)
+  } else {
+    initLevel(1)
+  }
+}
+
+// Click Board Card -> Move into Slot
+function handleCardClick(card: CardItem) {
+  if (card.status !== 'board' || card.isCovered) return
+  if (slotCards.value.length >= 7) return
+
+  // Push to history for undo
+  cardHistory.value.push({ card, fromStatus: 'board' })
+
+  // Move card to slot
+  card.status = 'slot'
+
+  // Smart Slot Sorting: group cards of same type together
+  insertCardIntoSlot(card)
+
+  // Recalculate board coverage
+  updateCardCoverage(allCards.value)
+
+  sound.playSlot()
+
+  // Check for 3-match elimination
+  checkMatchElimination()
+}
+
+// Insert card into slot next to matching type if possible
+function insertCardIntoSlot(card: CardItem) {
+  const currentSlots = [...slotCards.value]
+  const lastIndex = currentSlots.map(c => c.type).lastIndexOf(card.type)
+
+  if (lastIndex !== -1) {
+    // Insert right after the last card of the same type
+    currentSlots.splice(lastIndex + 1, 0, card)
+  } else {
+    // Otherwise append to end
+    currentSlots.push(card)
+  }
+
+  slotCards.value = currentSlots
+}
+
+// Check for 3 identical cards
+function checkMatchElimination() {
+  const typeCountMap: Record<string, CardItem[]> = {}
+  for (const card of slotCards.value) {
+    if (!typeCountMap[card.type]) {
+      typeCountMap[card.type] = []
+    }
+    typeCountMap[card.type].push(card)
+  }
+
+  let matched = false
+
+  for (const type in typeCountMap) {
+    const list = typeCountMap[type]
+    if (list.length >= 3) {
+      matched = true
+      const threeCards = list.slice(0, 3)
+      const ids = threeCards.map(c => c.id)
+
+      eliminatingIds.value.push(...ids)
+      sound.playMatch()
+
+      // Sparkle Confetti on match
+      triggerMatchConfetti()
+
+      setTimeout(() => {
+        // Mark cleared
+        threeCards.forEach(c => {
+          c.status = 'cleared'
+        })
+        slotCards.value = slotCards.value.filter(c => !ids.includes(c.id))
+        eliminatingIds.value = eliminatingIds.value.filter(id => !ids.includes(id))
+
+        // Check Victory
+        checkWinCondition()
+      }, 240)
+      break
+    }
+  }
+
+  // If no match and slots are full (>= 7), trigger alert/fail
+  if (!matched && slotCards.value.length >= 7) {
+    setTimeout(() => {
+      sound.playFail()
+      showFailModal.value = true
+    }, 280)
+  }
+}
+
+// Check if all cards on board and slots are cleared
+function checkWinCondition() {
+  const remainingActive = allCards.value.filter(c => c.status !== 'cleared')
+  if (remainingActive.length === 0) {
+    sound.playWin()
+    triggerVictoryConfetti()
+
+    // Draw coupon according to admin penalty ratio (e.g. 70% girlfriend task / 30% boyfriend reward)
+    const won = generateRandomCoupon(`第 ${currentLevel.value} 关通关`)
+    latestWonCoupon.value = won
+    loveCoupons.value = loadCoupons()
+    showWinModal.value = true
+  }
+}
+
+// Move Out 3 Cards (Props 1)
+function handleMoveOut() {
+  if (propsState.value.moveOut <= 0 || slotCards.value.length === 0) return
+
+  propsState.value.moveOut--
+  sound.playPowerUp()
+
+  // Take up to 3 cards from slot and put into staged
+  const cardsToMove = slotCards.value.slice(0, 3)
+  cardsToMove.forEach(c => {
+    c.status = 'staged'
+  })
+
+  stagedCards.value.push(...cardsToMove)
+  slotCards.value = slotCards.value.slice(3)
+}
+
+// Return Staged card to Slot
+function handleReturnStaged(card: CardItem) {
+  if (slotCards.value.length >= 7) return
+
+  stagedCards.value = stagedCards.value.filter(c => c.id !== card.id)
+  card.status = 'slot'
+  insertCardIntoSlot(card)
+  sound.playSlot()
+  checkMatchElimination()
+}
+
+// Undo Last Card (Props 2)
+function handleUndo() {
+  if (propsState.value.undo <= 0 || cardHistory.value.length === 0) return
+
+  const lastMove = cardHistory.value.pop()
+  if (!lastMove) return
+
+  propsState.value.undo--
+  sound.playPowerUp()
+
+  const card = lastMove.card
+  // Remove from slot
+  slotCards.value = slotCards.value.filter(c => c.id !== card.id)
+  stagedCards.value = stagedCards.value.filter(c => c.id !== card.id)
+
+  card.status = 'board'
+  updateCardCoverage(allCards.value)
+}
+
+// Shuffle Board Cards (Props 3)
+function handleShuffle() {
+  if (propsState.value.shuffle <= 0) return
+
+  const boardCards = allCards.value.filter(c => c.status === 'board')
+  if (boardCards.length <= 1) return
+
+  propsState.value.shuffle--
+  sound.playPowerUp()
+
+  const types = boardCards.map(c => c.type)
+  // Scramble types
+  types.sort(() => Math.random() - 0.5)
+
+  boardCards.forEach((c, idx) => {
+    c.type = types[idx]
+  })
+}
+
+// Summon Boyfriend (Ultimate Rescue)
+function handleSummonBoyfriend() {
+  sound.playRescue()
+
+  const admin = loadAdminConfig()
+  if (admin.summonCostEnabled) {
+    summonCostCoupon.value = generateRandomCoupon('召唤男友救场代价')
+  } else {
+    summonCostCoupon.value = undefined
+  }
+  loveCoupons.value = loadCoupons()
+  showBoyfriendModal.value = true
+
+  // Automatically solve 3 cards from slot (or clear 3 cards directly)
+  if (slotCards.value.length > 0) {
+    const toRescue = slotCards.value.slice(0, 3)
+    toRescue.forEach(c => {
+      c.status = 'staged'
+    })
+    stagedCards.value.push(...toRescue)
+    slotCards.value = slotCards.value.slice(3)
+  }
+}
+
+function handleSummonFromFail() {
+  showFailModal.value = false
+  handleSummonBoyfriend()
+}
+
+function closeBoyfriendModal() {
+  showBoyfriendModal.value = false
+}
+
+// Custom Photos Management
+function handleUpdateCardImage(cardId: string, base64: string) {
+  saveCustomImage(cardId, base64)
+  cardDefs.value = loadCardDefinitions()
+}
+
+function handleResetCard(cardId: string) {
+  removeCustomImage(cardId)
+  cardDefs.value = loadCardDefinitions()
+}
+
+// Coupon Actions
+function handleRedeemCoupon(couponId: string) {
+  sound.playPowerUp()
+  loveCoupons.value = redeemCoupon(couponId)
+}
+
+function openCouponsFromWin() {
+  showWinModal.value = false
+  showCouponsModal.value = true
+}
+
+// Visual Effects
+function triggerMatchConfetti() {
+  confetti({
+    particleCount: 22,
+    spread: 55,
+    origin: { y: 0.8 },
+    colors: ['#FF69B4', '#FFB6C1', '#FF6347', '#FFD700']
+  })
+}
+
+function triggerVictoryConfetti() {
+  confetti({
+    particleCount: 120,
+    spread: 90,
+    origin: { y: 0.5 },
+    colors: ['#FF1493', '#FF69B4', '#FFA07A', '#FFD700', '#00CED1']
+  })
+}
+
+onMounted(async () => {
+  // Sync latest config and shared coupons from server
+  try {
+    const { syncAdminConfigFromServer } = await import('./utils/adminConfig')
+    const { syncCouponsFromServer } = await import('./utils/coupons')
+    await syncAdminConfigFromServer()
+    cardDefs.value = loadCardDefinitions()
+    const coupons = await syncCouponsFromServer()
+    if (coupons && coupons.length > 0) {
+      loveCoupons.value = coupons
+    }
+  } catch (e) {
+    console.warn('Initial server sync failed, running in local mode', e)
+  }
+
+  initLevel(1)
+
+  if (
+    window.location.search.includes('admin') ||
+    window.location.hash.includes('admin') ||
+    window.location.pathname.includes('/admin')
+  ) {
+    showAdminModal.value = true
+  }
+})
+</script>
+
+<style>
+/* Global Responsive Mobile Layout */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+  background-color: #FFF0F5;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+}
+
+.game-wrapper {
+  max-width: 440px;
+}
+</style>

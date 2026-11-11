@@ -1,0 +1,20 @@
+[
+  {
+    "id": "coupon_init_1",
+    "title": "手洗臭袜子券",
+    "desc": "给男朋友手洗袜子一次，并夸赞袜子香喷喷！",
+    "icon": "🧦",
+    "used": false,
+    "target": "girlfriend_pays",
+    "obtainedAt": "情侣初始契约"
+  },
+  {
+    "id": "coupon_init_2",
+    "title": "全糖奶茶免单券",
+    "desc": "男友请客喝大杯奶茶，立即买单！",
+    "icon": "🧋",
+    "used": false,
+    "target": "boyfriend_pays",
+    "obtainedAt": "情侣初始契约"
+  }
+]

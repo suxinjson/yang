@@ -1,0 +1,11 @@
+{
+  "appId": "com.love.ganglegang",
+  "appName": "钢了钢",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
