@@ -12,7 +12,13 @@ else
   exit 1
 fi
 
-$DOCKER_CMD up -d --build
+# 检查并清理可能导致名称冲突的旧容器（如手动 docker run 或旧项目残留的容器）
+if docker ps -a --format '{{.Names}}' | grep -Eq '^ganglegang$'; then
+  echo ">>> 检测到已有同名 ganglegang 容器，正在停止并移除旧容器以释放名称..."
+  docker rm -f ganglegang 2>/dev/null || true
+fi
+
+$DOCKER_CMD up -d --build --remove-orphans --force-recreate
 
 echo ">>> [2/2] 执行服务健康探测 (Health Check)..."
 HEALTH_URL="http://127.0.0.1:3000/api/health"
