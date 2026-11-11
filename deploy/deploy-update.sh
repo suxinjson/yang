@@ -20,6 +20,13 @@ fi
 
 $DOCKER_CMD up -d --build --remove-orphans --force-recreate
 
+# 自动将 ganglegang 接入 Caddy (member-web-1) 所在的 Docker 网络，确保容器间直接通过服务名通信
+MEMBER_NET=$(docker inspect member-web-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' 2>/dev/null || true)
+if [ -n "$MEMBER_NET" ]; then
+  echo ">>> 正在将 ganglegang 接入 Caddy 网络 ($MEMBER_NET)..."
+  docker network connect "$MEMBER_NET" ganglegang 2>/dev/null || true
+fi
+
 echo ">>> [2/2] 执行服务健康探测 (Health Check)..."
 HEALTH_URL="http://127.0.0.1:3000/api/health"
 HEALTH_READY=0
