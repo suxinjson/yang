@@ -37,3 +37,6 @@ data/*.tmp.*
 android/app/build/
 android/.gradle/
 android/build/
+artifacts/
+*.jks
+*.keystore

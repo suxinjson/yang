@@ -1,6 +1,7 @@
 import type { AdminConfig, TaskItem } from '../types/game'
 import { apiSaveConfig, apiFetchConfig } from './api'
 import { normalizeGameSettings, defaultGameSettings } from '../../shared/gameConfig.js'
+import { normalizeBoyfriendSettings } from '../../shared/boyfriendConfig.js'
 
 const ADMIN_STORAGE_KEY = 'couple_game_admin_config_v3'
 
@@ -95,6 +96,7 @@ export const DEFAULT_BF_REWARDS: TaskItem[] = [
 ]
 
 export const DEFAULT_ADMIN_CONFIG: AdminConfig = {
+  ...normalizeBoyfriendSettings({}),
   gameSettings: defaultGameSettings(),
   bfPhotoIndex: 1, // 1 to 6, 0 for random
   couponName: '专属心愿券', // Default coupon display name
@@ -132,6 +134,7 @@ export function normalizeAdminConfig(input: unknown): AdminConfig {
     : structuredClone(fallback)
   const cards = Array.isArray(parsed.customCards) ? [...new Map(parsed.customCards.filter(card => card && typeof card.id === 'string' && card.id && typeof card.name === 'string').map(card => [card.id, { ...card }])).values()] : []
   return {
+    ...normalizeBoyfriendSettings(parsed),
     gameSettings: normalizeGameSettings(parsed.gameSettings),
     bfPhotoIndex: typeof parsed.bfPhotoIndex === 'number' && Number.isFinite(parsed.bfPhotoIndex) ? Math.max(0, Math.min(6, Math.round(parsed.bfPhotoIndex))) : 1,
     couponName: typeof parsed.couponName === 'string' ? parsed.couponName.trim().slice(0, 30) || '专属心愿券' : '专属心愿券',
@@ -176,9 +179,11 @@ export async function syncAdminConfigFromServer(): Promise<AdminConfig> {
 }
 
 export function getActiveBfPhoto(config: AdminConfig): string {
-  if (config.bfPhotoIndex === 0) {
-    const rand = Math.floor(Math.random() * 6) + 1
-    return `/photos/bf_${rand}.jpg`
-  }
-  return `/photos/bf_${config.bfPhotoIndex}.jpg`
+  return getActiveBfProfile(config).image
+}
+
+export function getActiveBfProfile(config: AdminConfig, random: () => number = Math.random) {
+  const photos = normalizeBoyfriendSettings(config).bfPhotos
+  const index = config.bfPhotoIndex === 0 ? Math.floor(random() * photos.length) : Math.max(0, Math.min(5, config.bfPhotoIndex - 1))
+  return { ...photos[index] }
 }

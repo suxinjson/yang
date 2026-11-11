@@ -141,7 +141,8 @@
     <!-- 1. Boyfriend Superhero Rescue Modal -->
     <BoyfriendModal
       v-if="showBoyfriendModal"
-      :custom-photo="boyfriendCustomPhoto"
+      :custom-photo="rescueProfile.image"
+      :photo-name="rescueProfile.name"
       :penalty-coupon="summonCostCoupon"
       :coupon-name="couponDisplayName"
       @close="closeBoyfriendModal"
@@ -196,7 +197,7 @@ import { sound } from './utils/sound'
 import { loadCardDefinitions, saveCustomImage, removeCustomImage } from './utils/cardThemes'
 import { createLevel, updateCardCoverage } from './utils/levelGenerator'
 import { loadCoupons, redeemCoupon, generateRandomCoupon, syncCouponsFromServer } from './utils/coupons'
-import { loadAdminConfig, saveAdminConfig, syncAdminConfigFromServer } from './utils/adminConfig'
+import { loadAdminConfig, saveAdminConfig, syncAdminConfigFromServer, getActiveBfProfile } from './utils/adminConfig'
 import { apiUploadPhoto } from './utils/api'
 import { getBoardLayout } from './utils/boardGeometry'
 import { defaultGameSettings, normalizeGameSettings } from '../shared/gameConfig.js'
@@ -282,10 +283,7 @@ const currentLevelName = computed(() => {
   return '心心相印'
 })
 
-const boyfriendCustomPhoto = computed(() => {
-  const bf = cardDefs.value.find(d => d.id === 'boyfriend_photo')
-  return bf?.customImage || bf?.staticImage
-})
+const rescueProfile = ref(getActiveBfProfile(loadAdminConfig()))
 
 let logoClickTimes = 0
 let logoClickTimer: any = null
@@ -346,7 +344,7 @@ function initLevel(level: number) {
 
   currentAdminConfig.value = loadAdminConfig()
   cardDefs.value = loadCardDefinitions()
-  roundCardDefs.value = cardDefs.value.map(def => ({ ...def }))
+  roundCardDefs.value = cardDefs.value.filter(def => def.id !== 'boyfriend_photo' || currentAdminConfig.value.bfCardEnabled).map(def => ({ ...def }))
   activeGameSettings.value = normalizeGameSettings(currentAdminConfig.value.gameSettings)
   const availableTypes = roundCardDefs.value.map(d => d.id)
   allCards.value = createLevel(level as 1 | 2 | 3, availableTypes, Math.random, activeGameSettings.value).cards
@@ -564,6 +562,7 @@ function handleSummonBoyfriend() {
   sound.playRescue()
 
   const admin = loadAdminConfig()
+  rescueProfile.value = getActiveBfProfile(admin)
   if (admin.summonCostEnabled) {
     summonCostCoupon.value = generateRandomCoupon('召唤男友救场')
   } else {
@@ -646,9 +645,12 @@ function triggerVictoryConfetti() {
 onMounted(async () => {
   // Sync latest config and shared coupons from server
   try {
-    currentAdminConfig.value = await syncAdminConfigFromServer()
+    const [config, coupons] = await Promise.all([
+      syncAdminConfigFromServer(),
+      syncCouponsFromServer()
+    ])
+    currentAdminConfig.value = config
     cardDefs.value = loadCardDefinitions()
-    const coupons = await syncCouponsFromServer()
     loveCoupons.value = coupons
   } catch (e) {
     console.warn('Initial server sync failed, running in local mode', e)
@@ -694,6 +696,15 @@ html, body {
 .game-wrapper {
   max-width: 440px;
   min-height: 100svh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.fixed.inset-0 {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
 }
 
 .board-section {

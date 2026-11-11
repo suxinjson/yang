@@ -10,8 +10,8 @@
 
         <!-- Boyfriend Avatar / Photo -->
         <div class="w-24 h-24 mx-auto mt-3 mb-2.5 rounded-full border-4 border-rose-400 p-1 bg-white shadow-lg overflow-hidden relative group">
-          <template v-if="customPhoto">
-            <img :src="resolveAssetUrl(customPhoto)" alt="男友帅照" class="w-full h-full object-cover rounded-full" />
+          <template v-if="customPhoto && !imageFailed">
+            <img :src="resolveAssetUrl(customPhoto)" :alt="photoName || '男友帅照'" class="w-full h-full object-cover rounded-full" @error="imageFailed = true" />
           </template>
           <template v-else>
             <div class="w-full h-full rounded-full bg-rose-100 flex items-center justify-center text-4xl">
@@ -22,6 +22,8 @@
             💖
           </div>
         </div>
+
+        <p class="text-sm font-black text-sky-800 mb-2" data-testid="rescue-photo-name">{{ photoName || '我的帅照' }}</p>
 
         <!-- Sweet Dialog -->
         <h3 class="text-base font-black text-gray-800 mb-0.5">
@@ -69,13 +71,17 @@
 
 <script setup lang="ts">
 import type { LoveCoupon } from '../types/game'
+import { ref } from 'vue'
 import { resolveAssetUrl } from '../utils/api'
 
 defineProps<{
   customPhoto?: string
+  photoName?: string
   penaltyCoupon?: LoveCoupon
   couponName?: string
 }>()
+
+const imageFailed = ref(false)
 
 defineEmits<{
   (e: 'close'): void

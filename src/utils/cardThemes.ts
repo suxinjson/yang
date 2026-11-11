@@ -1,5 +1,5 @@
 import type { CardDefinition } from '../types/game'
-import { loadAdminConfig, getActiveBfPhoto } from './adminConfig'
+import { loadAdminConfig, getActiveBfProfile } from './adminConfig'
 
 // Default Card Definitions with personalized couple memes
 export const DEFAULT_CARD_DEFINITIONS: CardDefinition[] = [
@@ -179,11 +179,14 @@ const STORAGE_KEY = 'couple_game_custom_tiles_v1'
 
 export function loadCardDefinitions(): CardDefinition[] {
   const admin = loadAdminConfig()
-  const activeBf = getActiveBfPhoto(admin)
+  const activeBf = getActiveBfProfile(admin)
 
   let baseDefs = DEFAULT_CARD_DEFINITIONS
   if (admin.customCards && Array.isArray(admin.customCards) && admin.customCards.length >= 3) {
     baseDefs = admin.customCards
+  }
+  if (!baseDefs.some(def => def.id === 'boyfriend_photo')) {
+    baseDefs = [...baseDefs, DEFAULT_CARD_DEFINITIONS.find(def => def.id === 'boyfriend_photo')!]
   }
 
   let savedUserPhotos: Record<string, string> = {}
@@ -197,12 +200,13 @@ export function loadCardDefinitions(): CardDefinition[] {
   }
 
   return baseDefs.map(def => {
+    if (def.id === 'boyfriend_photo') {
+      return { ...def, name: activeBf.name, staticImage: activeBf.image, customImage: undefined }
+    }
     let staticImg = def.staticImage
 
-    // Dynamic boyfriend photo from admin config
-    if (def.id === 'boyfriend_photo') {
-      staticImg = activeBf
-    } else if (admin.activeCardPhotos && admin.activeCardPhotos[def.id]) {
+    // Photo overrides for the other card types.
+    if (admin.activeCardPhotos && admin.activeCardPhotos[def.id]) {
       staticImg = admin.activeCardPhotos[def.id]
     }
 

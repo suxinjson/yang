@@ -5,6 +5,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { defaultGameSettings, normalizeGameSettings } from './shared/gameConfig.js'
+import { normalizeBoyfriendSettings } from './shared/boyfriendConfig.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -27,6 +28,7 @@ const couponsFilePath = path.join(dataDir, 'coupons.json')
 
 // Initial Default Config
 const DEFAULT_CONFIG = {
+  ...normalizeBoyfriendSettings({}),
   gameSettings: defaultGameSettings(),
   adminPassword: 'admin',
   bfPhotoIndex: 1, // 1 to 6, 0 for random
@@ -149,7 +151,7 @@ function loadServerConfig() {
   if (fs.existsSync(configFilePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'))
-      return { ...DEFAULT_CONFIG, ...data, gameSettings: normalizeGameSettings(data?.gameSettings) }
+      return { ...DEFAULT_CONFIG, ...data, ...normalizeBoyfriendSettings(data), gameSettings: normalizeGameSettings(data?.gameSettings) }
     } catch (e) {
       console.error('Failed to read config file', e)
     }
@@ -292,16 +294,16 @@ app.post('/api/admin/password', requireAdminAuth, (req, res) => {
 app.get('/api/config', (req, res) => {
   const cfg = loadServerConfig()
   // Calculate active boyfriend photo if 0 (random)
-  let activeBf = `/photos/bf_${cfg.bfPhotoIndex}.jpg`
+  let selectedIndex = cfg.bfPhotoIndex - 1
   if (cfg.bfPhotoIndex === 0) {
     const rand = Math.floor(Math.random() * 6) + 1
-    activeBf = `/photos/bf_${rand}.jpg`
+    selectedIndex = rand - 1
   }
 
   // Return public safe config
   res.json({
     ...publicConfig(cfg),
-    activeBfPhoto: activeBf
+    activeBfPhoto: cfg.bfPhotos[selectedIndex]?.image || cfg.bfPhotos[0].image
   })
 })
 
@@ -329,7 +331,8 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
   if (Object.hasOwn(patch, 'gfPenaltyRatio')) patch.gfPenaltyRatio = typeof patch.gfPenaltyRatio === 'number' && Number.isFinite(patch.gfPenaltyRatio) ? Math.max(0, Math.min(100, Math.round(patch.gfPenaltyRatio))) : current.gfPenaltyRatio
   if (Object.hasOwn(patch, 'couponName')) patch.couponName = typeof patch.couponName === 'string' ? patch.couponName.trim().slice(0, 30) || '专属心愿券' : current.couponName
   if (Object.hasOwn(patch, 'summonCostEnabled') && typeof patch.summonCostEnabled !== 'boolean') patch.summonCostEnabled = current.summonCostEnabled
-  const merged = { ...current, ...patch, gameSettings: Object.hasOwn(newConfig, 'gameSettings') ? normalizeGameSettings(newConfig.gameSettings) : current.gameSettings }
+  const boyfriendPatch = Object.fromEntries(['bfPhotos', 'bfCardEnabled'].filter(key => Object.hasOwn(newConfig, key)).map(key => [key, newConfig[key]]))
+  const merged = { ...current, ...patch, ...normalizeBoyfriendSettings({ ...current, ...boyfriendPatch }), gameSettings: Object.hasOwn(newConfig, 'gameSettings') ? normalizeGameSettings(newConfig.gameSettings) : current.gameSettings }
   saveServerConfig(merged)
   res.json({ success: true, config: publicConfig(merged) })
 })
@@ -402,7 +405,7 @@ app.post('/api/upload', requireAdminAuth, (req, res) => {
     }
 
     const fileName = `custom_${cleanCardId}_${Date.now()}.${ext}`
-    const photoDir = path.join(__dirname, 'public', 'photos')
+    const photoDir = path.join(dataDir, 'photos')
     if (!fs.existsSync(photoDir)) {
       fs.mkdirSync(photoDir, { recursive: true })
     }
@@ -423,7 +426,12 @@ app.post('/api/upload', requireAdminAuth, (req, res) => {
 // --- Static Files & SPA Fallback ---
 const publicDir = path.join(__dirname, 'public')
 const distDir = path.join(__dirname, 'dist')
+const persistentPhotosDir = path.join(dataDir, 'photos')
 
+if (!fs.existsSync(persistentPhotosDir)) {
+  fs.mkdirSync(persistentPhotosDir, { recursive: true })
+}
+app.use('/photos', express.static(persistentPhotosDir))
 app.use(express.static(publicDir))
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir))

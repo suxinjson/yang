@@ -1,4 +1,5 @@
 import type { AdminConfig, LoveCoupon } from '../types/game'
+import { Capacitor } from '@capacitor/core'
 
 const STORAGE_API_KEY = 'ganglegang_api_url'
 const TOKEN_KEY = 'ganglegang_admin_token'
@@ -12,6 +13,9 @@ export function resolveAssetUrl(url: string | undefined): string {
     return url
   }
   const clean = url.replace(/^\/+/, '')
+  if (Capacitor.isNativePlatform()) {
+    return `${getBaseUrl()}/${clean}`
+  }
   const prefix = typeof window !== 'undefined' && window.location.pathname.startsWith('/gang') ? '/gang/' : '/'
   return prefix + clean
 }
@@ -25,10 +29,11 @@ export function resolveAssetUrl(url: string | undefined): string {
 export function getBaseUrl(): string {
   if (typeof window === 'undefined') return ''
 
-  const savedUrl = localStorage.getItem(STORAGE_API_KEY)
+  // Native clients use the server embedded at build time, without a setup screen.
+  const savedUrl = Capacitor.isNativePlatform() ? null : localStorage.getItem(STORAGE_API_KEY)
   if (savedUrl) return savedUrl.trim().replace(/\/+$/, '')
 
-  const envUrl = (import.meta as any).env?.VITE_API_URL
+  const envUrl = import.meta.env.VITE_API_URL
   if (envUrl) return envUrl.trim().replace(/\/+$/, '')
 
   const origin = window.location.origin

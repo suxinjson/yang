@@ -71,6 +71,7 @@
           </div>
           <button
             class="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 font-bold flex items-center justify-center text-xs"
+            :disabled="bfUploading"
             @click="$emit('close')"
           >
             ✕
@@ -126,49 +127,9 @@
           <GameSettingsPanel ref="gamePanel" v-show="activeTab === 'game'" :settings="config.gameSettings" :busy="saveStatus === 'saving'" @save="saveGameSettings" />
 
           <!-- TAB 1: 卡牌图片与增减全面配置 -->
-          <div v-if="activeTab === 'photos'" class="space-y-4">
+          <div v-show="activeTab === 'photos'" class="space-y-4">
             
-            <!-- 男友自拍切换 (6张精修帅照) -->
-            <div class="bg-sky-50/70 p-3 rounded-2xl border border-sky-200">
-              <div class="flex items-center justify-between mb-2">
-                <span class="font-extrabold text-sky-950 flex items-center gap-1">
-                  <span>👦</span>
-                  <span>男友帅照切换（共 6 张精修自拍）</span>
-                </span>
-                <span class="text-[10px] text-sky-700 font-bold bg-sky-200/60 px-2 py-0.5 rounded-full">
-                  当前：{{ currentBfText }}
-                </span>
-              </div>
-
-              <div class="grid grid-cols-4 gap-2">
-                <!-- 随机轮播 -->
-                <div
-                  class="rounded-xl border-2 flex flex-col items-center justify-center p-1 cursor-pointer active:scale-95 transition-all text-center aspect-square"
-                  :class="config.bfPhotoIndex === 0 ? 'border-sky-500 bg-sky-200 shadow-sm' : 'border-gray-200 bg-white'"
-                  @click="selectBfPhoto(0)"
-                >
-                  <span class="text-xl">🎲</span>
-                  <span class="text-[9px] font-bold mt-1">随机轮播</span>
-                </div>
-
-                <!-- 6 张男友照片 -->
-                <div
-                  v-for="i in 6"
-                  :key="'bf-' + i"
-                  class="relative rounded-xl border-2 overflow-hidden cursor-pointer active:scale-95 transition-all aspect-square group"
-                  :class="config.bfPhotoIndex === i ? 'border-sky-500 ring-2 ring-sky-400 shadow-md' : 'border-gray-200 bg-white'"
-                  @click="selectBfPhoto(i)"
-                >
-                  <img :src="resolveAssetUrl(`/photos/bf_${i}.jpg`)" class="w-full h-full object-cover" />
-                  <div class="absolute bottom-0 inset-x-0 bg-gray-950/60 text-white text-[8px] font-bold text-center py-0.5">
-                    帅照 {{ i }}
-                  </div>
-                  <div v-if="config.bfPhotoIndex === i" class="absolute top-1 right-1 bg-sky-500 text-white text-[8px] rounded-full px-1 font-black">
-                    ✓
-                  </div>
-                </div>
-              </div>
-            </div>
+            <BoyfriendSettingsPanel :config="config" @update="updateBoyfriendConfig" @save="handleSave" @busy="bfUploading = $event" />
 
             <!-- 全部卡牌自定义/增减管理 -->
             <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200">
@@ -181,7 +142,7 @@
                       当前共 {{ localCards.length }} 种
                     </span>
                   </div>
-                  <div class="text-[10px] text-gray-400 mt-0.5">可直接修改卡片名称、上传图片或增减种类</div>
+                  <div class="text-[10px] text-gray-400 mt-0.5">可修改卡片名称、图片或种类；男友帅照在上方单独配置</div>
                 </div>
                 
                 <div class="flex items-center gap-1.5">
@@ -280,7 +241,7 @@
               <!-- 卡牌列表 -->
               <div class="space-y-2">
                 <div
-                  v-for="(card, idx) in localCards"
+                  v-for="(card, idx) in localCards.filter(card => card.id !== 'boyfriend_photo')"
                   :key="card.id"
                   class="flex items-center justify-between p-2 rounded-xl bg-white border border-gray-200 shadow-2xs hover:border-gray-300 transition-all"
                 >
@@ -646,7 +607,7 @@
           </span>
           <button
             class="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md active:scale-95 transition-all"
-            :disabled="saveStatus === 'saving'"
+            :disabled="saveStatus === 'saving' || bfUploading"
             @click="saveAndClose"
           >
             保存并退出后台
@@ -667,6 +628,7 @@ import { saveCoupons } from '../utils/coupons'
 import { apiLogin, apiResetCoupons, apiChangePassword, getAdminToken, resolveAssetUrl } from '../utils/api'
 import { DEFAULT_CARD_DEFINITIONS } from '../utils/cardThemes'
 import GameSettingsPanel from './GameSettingsPanel.vue'
+import BoyfriendSettingsPanel from './BoyfriendSettingsPanel.vue'
 
 const props = defineProps<{
   cardDefs: CardDefinition[]
@@ -689,6 +651,7 @@ const activeTab = ref<'game' | 'photos' | 'rules' | 'gf_tasks' | 'bf_rewards' | 
 
 // Config
 const config = ref<AdminConfig>(loadAdminConfig())
+const bfUploading = ref(false)
 const gamePanel = ref<InstanceType<typeof GameSettingsPanel> | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'synced' | 'local' | 'failed'>('idle')
 const saveStatusText = computed(() => ({ idle: '修改后请保存；关卡参数下局应用', saving: '正在保存到服务器…', synced: '已保存并同步到服务器', local: '仅保存在本机，未同步；请检查网络或重新登录', failed: '保存失败，请重试或释放本机存储空间' })[saveStatus.value])
@@ -833,11 +796,6 @@ function restoreDefaultCards() {
   initLocalCards()
 }
 
-const currentBfText = computed(() => {
-  if (config.value.bfPhotoIndex === 0) return '🎲 随机轮播'
-  return `帅照 ${config.value.bfPhotoIndex}`
-})
-
 // Authentication
 async function handleLogin() {
   const pwd = passwordInput.value
@@ -852,9 +810,8 @@ async function handleLogin() {
   }
 }
 
-function selectBfPhoto(index: number) {
-  config.value.bfPhotoIndex = index
-  handleSave()
+function updateBoyfriendConfig(patch: Partial<Pick<AdminConfig, 'bfPhotos' | 'bfPhotoIndex' | 'bfCardEnabled'>>) {
+  Object.assign(config.value, patch)
 }
 
 async function handleSave() {
@@ -872,6 +829,7 @@ function saveGameSettings(settings: GameSettings) {
 }
 
 async function saveAndClose() {
+  if (bfUploading.value) return
   if (gamePanel.value) config.value.gameSettings = gamePanel.value.prepareSettings()
   const result = await handleSave()
   if (result === 'synced') emit('close')

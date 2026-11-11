@@ -58,6 +58,8 @@ export interface GameSettings {
 }
 
 export interface AdminConfig {
+  bfPhotos: BoyfriendPhoto[]
+  bfCardEnabled: boolean
   gameSettings: GameSettings
   bfPhotoIndex: number // 1 to 6, or 0 for random
   couponName: string // Configurable name for coupons displayed to user (default: '专属心愿券')
@@ -67,4 +69,9 @@ export interface AdminConfig {
   customCards?: CardDefinition[] // Dynamic card definitions (add, delete, rename, change image)
   girlfriendTasks: TaskItem[] // Customizable GF penalties / tasks
   boyfriendRewards: TaskItem[] // Customizable BF rewards / treats
+}
+
+export interface BoyfriendPhoto {
+  name: string
+  image: string
 }

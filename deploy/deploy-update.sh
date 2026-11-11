@@ -21,11 +21,10 @@ fi
 $DOCKER_CMD up -d --build --remove-orphans --force-recreate
 
 # 自动将 ganglegang 接入 Caddy (member-web-1) 所在的 Docker 网络，确保容器间直接通过服务名通信
-MEMBER_NET=$(docker inspect member-web-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{println}}{{end}}' 2>/dev/null | head -n 1)
-if [ -n "$MEMBER_NET" ]; then
+for MEMBER_NET in $(docker inspect member-web-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
   echo ">>> 正在将 ganglegang 接入 Caddy 网络 ($MEMBER_NET)..."
   docker network connect --alias ganglegang "$MEMBER_NET" ganglegang 2>/dev/null || true
-fi
+done
 
 # 自动检查并维护宿主机 Caddyfile 的 /gang 路由规则（防止被会员系统更新覆盖）
 HOST_CADDY=$(docker inspect member-web-1 --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)
