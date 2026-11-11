@@ -27,6 +27,39 @@ if [ -n "$MEMBER_NET" ]; then
   docker network connect --alias ganglegang "$MEMBER_NET" ganglegang 2>/dev/null || true
 fi
 
+# 自动检查并维护宿主机 Caddyfile 的 /gang 路由规则（防止被会员系统更新覆盖）
+HOST_CADDY=$(docker inspect member-web-1 --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)
+if [ -n "$HOST_CADDY" ] && [ -f "$HOST_CADDY" ]; then
+  python3 -c "
+import sys, os
+rule = '''    redir /gang /gang/ 308
+    handle_path /gang/* {
+        reverse_proxy ganglegang:3000
+    }
+'''
+targets = set(sys.argv[1:])
+for path in targets:
+    if not path or not os.path.isfile(path):
+        continue
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        if 'handle_path /gang/*' not in c:
+            if 'redir /admin' in c:
+                c = c.replace('redir /admin', rule + '    redir /admin', 1)
+            elif 'handle {' in c:
+                c = c.replace('handle {', rule + '    handle {', 1)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(c)
+            print('>>> [Caddyfile] 已自动持久化 /gang 路由至:', path)
+    except Exception as e:
+        print('>>> [Caddyfile] 更新告警:', e)
+" "$HOST_CADDY" "$(dirname "$HOST_CADDY")/Caddyfile" "$(dirname "$HOST_CADDY")/Caddyfile.ip" 2>/dev/null || true
+
+  # 通知 Caddy 重新加载配置
+  docker exec member-web-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+fi
+
 echo ">>> [2/2] 执行服务健康探测 (Health Check)..."
 HEALTH_URL="http://127.0.0.1:3000/api/health"
 HEALTH_READY=0
