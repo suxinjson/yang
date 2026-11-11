@@ -84,28 +84,28 @@
             :class="activeTab === 'photos' ? 'bg-slate-900 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'photos'"
           >
-            📸 卡牌与图片配置
+            🎴 卡牌种类与图片 ({{ localCards.length }})
           </button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
             :class="activeTab === 'rules' ? 'bg-slate-900 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'rules'"
           >
-            ⚖️ 心愿概率与开关
+            ⚖️ 券名与男女奖惩比例
           </button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
             :class="activeTab === 'gf_tasks' ? 'bg-amber-500 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'gf_tasks'"
           >
-            🧦 互动任务清单 ({{ config.girlfriendTasks.length }})
+            🧦 女方惩罚/任务 ({{ config.girlfriendTasks.length }})
           </button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
             :class="activeTab === 'bf_rewards' ? 'bg-sky-500 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'bf_rewards'"
           >
-            🎁 甜蜜特权清单 ({{ config.boyfriendRewards.length }})
+            🎁 男方买单/特权 ({{ config.boyfriendRewards.length }})
           </button>
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
@@ -119,7 +119,7 @@
         <!-- Tab Content Body -->
         <div class="flex-1 overflow-y-auto py-3 space-y-4 pr-1 text-xs">
 
-          <!-- TAB 1: 卡牌图片全面配置 -->
+          <!-- TAB 1: 卡牌图片与增减全面配置 -->
           <div v-if="activeTab === 'photos'" class="space-y-4">
             
             <!-- 男友自拍切换 (6张精修帅照) -->
@@ -164,21 +164,122 @@
               </div>
             </div>
 
-            <!-- 其他所有卡牌自定义/上传管理 -->
+            <!-- 全部卡牌自定义/增减管理 -->
             <div class="bg-gray-50 p-3 rounded-2xl border border-gray-200">
-              <div class="font-extrabold text-gray-900 mb-2 flex items-center justify-between">
-                <span>🎴 其余卡牌图片管理</span>
-                <span class="text-[10px] text-gray-400 font-normal">点击右侧按钮可直接上传更换新图片</span>
+              <div class="flex items-center justify-between mb-2.5">
+                <div>
+                  <div class="font-extrabold text-gray-900 text-xs flex items-center gap-1.5">
+                    <span>🎴</span>
+                    <span>全部卡牌配置（增减与修改）</span>
+                    <span class="text-[10px] text-rose-600 font-bold bg-rose-100 px-2 py-0.2 rounded-full">
+                      当前共 {{ localCards.length }} 种
+                    </span>
+                  </div>
+                  <div class="text-[10px] text-gray-400 mt-0.5">可直接修改卡片名称、上传图片或增减种类</div>
+                </div>
+                
+                <div class="flex items-center gap-1.5">
+                  <button
+                    class="px-2.5 py-1 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-[10px] shadow-xs active:scale-95 transition-all flex items-center gap-0.5"
+                    @click="showAddCardForm = !showAddCardForm"
+                  >
+                    <span>➕</span>
+                    <span>添加卡牌</span>
+                  </button>
+                  <button
+                    class="px-2 py-1 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-[10px] active:scale-95 transition-all"
+                    @click="restoreDefaultCards"
+                    title="恢复为默认的9种基础卡牌"
+                  >
+                    恢复默认
+                  </button>
+                </div>
               </div>
 
+              <!-- 添加新卡片表单 -->
+              <div v-if="showAddCardForm" class="bg-white p-3 rounded-xl border border-rose-300 mb-3 space-y-2 shadow-xs">
+                <div class="flex items-center justify-between">
+                  <span class="font-black text-rose-950 text-xs">✨ 添加新游戏卡牌</span>
+                  <button class="text-xs text-gray-400 font-bold" @click="showAddCardForm = false">✕</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="text-[10px] font-bold text-gray-600 mb-0.5 block">卡牌名称 *</label>
+                    <input
+                      type="text"
+                      v-model="newCardForm.name"
+                      placeholder="如: 亲亲抱抱"
+                      class="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-[10px] font-bold text-gray-600 mb-0.5 block">卡牌描述</label>
+                    <input
+                      type="text"
+                      v-model="newCardForm.desc"
+                      placeholder="如: 甜蜜充电"
+                      class="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <!-- 图片上传或表情包 -->
+                <div>
+                  <label class="text-[10px] font-bold text-gray-600 mb-1 block">卡牌图片或图标</label>
+                  <div class="flex items-center gap-2">
+                    <div class="w-12 h-12 rounded-lg border border-dashed border-gray-300 flex items-center justify-center bg-gray-50 flex-shrink-0 overflow-hidden">
+                      <img v-if="newCardImagePreview" :src="newCardImagePreview" class="w-full h-full object-cover" />
+                      <span v-else class="text-2xl">{{ newCardForm.emoji }}</span>
+                    </div>
+                    <div class="flex-1 space-y-1.5">
+                      <div class="flex items-center gap-1.5">
+                        <label class="cursor-pointer text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white active:scale-95">
+                          <span>上传专属图片</span>
+                          <input type="file" accept="image/*" class="hidden" @change="handleNewCardFile" />
+                        </label>
+                        <span v-if="newCardImagePreview" class="text-[9px] text-emerald-600 font-bold">✓ 已选图片</span>
+                      </div>
+                      <div class="flex items-center gap-1 flex-wrap">
+                        <span class="text-[9px] text-gray-400">或选择Emoji:</span>
+                        <button
+                          v-for="em in PRESET_EMOJIS"
+                          :key="em"
+                          type="button"
+                          class="text-xs p-0.5 hover:scale-125 transition-transform"
+                          @click="newCardForm.emoji = em; newCardImagePreview = ''"
+                        >
+                          {{ em }}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="pt-1 flex justify-end gap-1.5">
+                  <button
+                    class="px-3 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs"
+                    @click="showAddCardForm = false"
+                  >
+                    取消
+                  </button>
+                  <button
+                    class="px-4 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-xs"
+                    @click="addNewCard"
+                  >
+                    确认添加
+                  </button>
+                </div>
+              </div>
+
+              <!-- 卡牌列表 -->
               <div class="space-y-2">
                 <div
-                  v-for="card in cardDefs"
+                  v-for="(card, idx) in localCards"
                   :key="card.id"
-                  class="flex items-center justify-between p-2 rounded-xl bg-white border border-gray-200 shadow-2xs"
+                  class="flex items-center justify-between p-2 rounded-xl bg-white border border-gray-200 shadow-2xs hover:border-gray-300 transition-all"
                 >
-                  <div class="flex items-center gap-2.5">
-                    <div class="w-10 h-10 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center bg-gray-50 flex-shrink-0">
+                  <div class="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                    <div class="w-10 h-10 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center bg-gray-50 flex-shrink-0 relative group">
                       <img
                         v-if="card.customImage || card.staticImage"
                         :src="resolveAssetUrl(card.customImage || card.staticImage)"
@@ -186,15 +287,33 @@
                       />
                       <div v-else class="w-6 h-6 flex items-center justify-center" v-html="card.defaultIconSvg"></div>
                     </div>
-                    <div>
-                      <div class="font-bold text-gray-800 text-xs">{{ card.name }}</div>
-                      <div class="text-[10px] text-gray-400">{{ card.desc }}</div>
+                    
+                    <div class="flex-1 min-w-0 space-y-0.5">
+                      <div class="flex items-center gap-1">
+                        <span class="text-[9px] font-black text-gray-400">#{{ idx + 1 }}</span>
+                        <input
+                          type="text"
+                          v-model="card.name"
+                          @change="updateCardInfo(card)"
+                          placeholder="卡牌名字"
+                          class="font-black text-gray-800 text-xs px-1.5 py-0.5 rounded border border-gray-200 hover:border-rose-300 focus:border-rose-400 focus:bg-rose-50/50 w-28 truncate"
+                          title="点击可直接修改卡牌名称"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        v-model="card.desc"
+                        @change="updateCardInfo(card)"
+                        placeholder="描述"
+                        class="text-[10px] text-gray-400 px-1 py-0.2 rounded border border-transparent hover:border-gray-200 focus:border-gray-300 w-full truncate"
+                        title="点击可修改描述"
+                      />
                     </div>
                   </div>
 
-                  <div class="flex items-center gap-1">
+                  <div class="flex items-center gap-1 flex-shrink-0">
                     <label class="cursor-pointer text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white active:scale-95 transition-all">
-                      <span>更换</span>
+                      <span>换图</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -202,13 +321,13 @@
                         @change="handleCardUpload($event, card.id)"
                       />
                     </label>
+
                     <button
-                      v-if="card.customImage"
-                      class="text-[10px] text-red-500 hover:text-red-700 px-1 py-1"
-                      @click="$emit('reset-card', card.id)"
-                      title="恢复默认"
+                      class="text-[10px] font-bold px-1.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 active:scale-95 transition-all"
+                      @click="deleteCard(card.id)"
+                      title="删除此卡牌"
                     >
-                      重置
+                      删除
                     </button>
                   </div>
                 </div>
@@ -217,19 +336,67 @@
 
           </div>
 
-          <!-- TAB 2: 心愿规则与概率 -->
+          <!-- TAB 2: 券名配置与男女奖惩比例 -->
           <div v-if="activeTab === 'rules'" class="space-y-4">
             
-            <!-- 概率滑块 -->
-            <div class="bg-rose-50/80 p-4 rounded-2xl border border-rose-200">
+            <!-- 1. 前端卡券名称统一配置 -->
+            <div class="bg-rose-50/90 p-3.5 rounded-2xl border border-rose-200">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-extrabold text-rose-950 text-xs flex items-center gap-1.5">
+                  <span>🏷️</span>
+                  <span>前端卡券展示名称</span>
+                </span>
+                <span class="text-[10px] text-rose-700 font-bold bg-white px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs">
+                  当前展示：🎁 {{ config.couponName || '专属心愿券' }}
+                </span>
+              </div>
+              <p class="text-[10px] text-gray-500 mb-2 leading-relaxed">
+                可自由配置所有通关/救场卡券及存折的展示标题（如：专属心愿券、恋爱特权卡、甜蜜互动券等）
+              </p>
+              <div class="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  v-model="config.couponName"
+                  placeholder="如: 专属心愿券"
+                  class="flex-1 px-3 py-1.5 rounded-xl border border-rose-300 bg-white text-xs font-bold text-gray-800"
+                  @change="handleSave"
+                />
+                <button
+                  class="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs active:scale-95 shadow-xs"
+                  @click="handleSave"
+                >
+                  保存券名
+                </button>
+              </div>
+            </div>
+
+            <!-- 2. 后台区分男女的奖惩比例配置 -->
+            <div class="bg-amber-50/80 p-4 rounded-2xl border border-amber-200">
               <div class="flex items-center justify-between mb-2">
-                <span class="font-extrabold text-rose-950 flex items-center gap-1.5 text-xs">
+                <span class="font-extrabold text-amber-950 flex items-center gap-1.5 text-xs">
                   <span>⚖️</span>
-                  <span>心愿类型抽取比例</span>
+                  <span>男女奖惩抽取比例配置</span>
                 </span>
-                <span class="text-xs font-black text-rose-600 bg-rose-200/80 px-2.5 py-0.5 rounded-full">
-                  {{ config.gfPenaltyRatio }}% 互动任务
-                </span>
+                <div class="flex items-center gap-1 text-[10px] font-black">
+                  <span class="text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-200">女方惩罚 {{ config.gfPenaltyRatio }}%</span>
+                  <span class="text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full border border-sky-200">男方买单 {{ 100 - config.gfPenaltyRatio }}%</span>
+                </div>
+              </div>
+
+              <!-- 双色比例可视化条 -->
+              <div class="w-full h-3 rounded-full overflow-hidden flex bg-gray-200 shadow-inner my-2">
+                <div
+                  class="bg-gradient-to-r from-rose-400 to-pink-500 h-full transition-all duration-200 flex items-center justify-center text-[8px] text-white font-black"
+                  :style="{ width: `${config.gfPenaltyRatio}%` }"
+                >
+                  <span v-if="config.gfPenaltyRatio >= 15">{{ config.gfPenaltyRatio }}%</span>
+                </div>
+                <div
+                  class="bg-gradient-to-r from-sky-400 to-blue-500 h-full transition-all duration-200 flex items-center justify-center text-[8px] text-white font-black"
+                  :style="{ width: `${100 - config.gfPenaltyRatio}%` }"
+                >
+                  <span v-if="(100 - config.gfPenaltyRatio) >= 15">{{ 100 - config.gfPenaltyRatio }}%</span>
+                </div>
               </div>
 
               <input
@@ -239,29 +406,33 @@
                 step="5"
                 v-model.number="config.gfPenaltyRatio"
                 @change="handleSave"
-                class="w-full accent-rose-500 h-2.5 bg-rose-200 rounded-lg cursor-pointer my-2"
+                class="w-full accent-amber-500 h-2 bg-amber-200 rounded-lg cursor-pointer my-1.5"
               />
 
-              <div class="flex justify-between items-center text-[10px] text-gray-500">
-                <span>0% (全为特权)</span>
-                <span class="text-rose-600 font-bold">推荐 50% ~ 75% 趣味互动！</span>
-                <span>100% (全为任务)</span>
+              <div class="flex justify-between items-center text-[10px] text-gray-500 font-bold">
+                <span class="text-sky-700">0% (全抽男方特权/买单)</span>
+                <span class="text-amber-800">推荐 50% ~ 75% 趣味互动</span>
+                <span class="text-rose-700">100% (全抽女方惩罚/干活)</span>
               </div>
 
-              <div class="mt-3 text-[11px] text-rose-800 bg-white/80 p-2.5 rounded-xl border border-rose-100">
-                当前设定：每次通关或救场抽卡时，有 <b>{{ config.gfPenaltyRatio }}%</b> 概率抽取趣味互动任务，有 <b>{{ 100 - config.gfPenaltyRatio }}%</b> 概率抽取甜蜜特权礼券。
+              <div class="mt-3 text-[11px] text-amber-900 bg-white/90 p-2.5 rounded-xl border border-amber-200 leading-relaxed">
+                💡 <b>后台机制说明</b>：
+                <br/>
+                每次通关或救场抽卡时，系统后台有 <b>{{ config.gfPenaltyRatio }}%</b> 概率抽取【女方惩罚/任务池】，有 <b>{{ 100 - config.gfPenaltyRatio }}%</b> 概率抽取【男方买单/特权池】。
+                <br/>
+                <b>✨ 用户端体验保护</b>：在前端用户界面，无论抽中哪项，均统一以自定义券名 <b>「{{ config.couponName || '专属心愿券' }}」</b> 进行甜蜜展示，不向玩家暴露任何惩罚与男女标签！
               </div>
             </div>
 
-            <!-- 救场心愿开关 -->
-            <div class="bg-amber-50/80 p-4 rounded-2xl border border-amber-200 flex items-center justify-between">
+            <!-- 3. 救场获得卡券开关 -->
+            <div class="bg-sky-50/80 p-4 rounded-2xl border border-sky-200 flex items-center justify-between">
               <div>
-                <div class="font-extrabold text-amber-950 text-xs flex items-center gap-1">
+                <div class="font-extrabold text-sky-950 text-xs flex items-center gap-1">
                   <span>🦸‍♂️</span>
-                  <span>“召唤男友”救场获得心愿开关</span>
+                  <span>“召唤男友”救场获得卡券开关</span>
                 </div>
-                <div class="text-[10px] text-amber-800 mt-0.5">
-                  开启后，点击召唤男友救场时，会同时抽取一张互动心愿券存入存折
+                <div class="text-[10px] text-sky-800 mt-0.5">
+                  开启后，点击召唤男友救场时，会同时抽取一张「{{ config.couponName || '专属心愿券' }}」存入存折
                 </div>
               </div>
               <label class="relative inline-flex items-center cursor-pointer ml-3">
@@ -271,22 +442,25 @@
                   @change="handleSave"
                   class="sr-only peer"
                 />
-                <div class="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                <div class="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-500"></div>
               </label>
             </div>
 
           </div>
 
-          <!-- TAB 3: 互动心愿任务清单 (CRUD) -->
+          <!-- TAB 3: 女方惩罚/任务清单 (CRUD) -->
           <div v-if="activeTab === 'gf_tasks'" class="space-y-3">
             <div class="flex items-center justify-between">
-              <span class="font-extrabold text-gray-900">🧦 互动心愿任务池 (可自由修改)</span>
-              <span class="text-[10px] text-amber-600 font-bold">共 {{ config.girlfriendTasks.length }} 项</span>
+              <div>
+                <span class="font-extrabold text-gray-900 text-xs">🧦 女方惩罚/任务池 (可自由修改)</span>
+                <div class="text-[10px] text-gray-400">后台抽取倾向：{{ config.gfPenaltyRatio }}% 概率抽中此池</div>
+              </div>
+              <span class="text-[10px] text-amber-600 font-bold bg-amber-100 px-2 py-0.5 rounded-full">共 {{ config.girlfriendTasks.length }} 项</span>
             </div>
 
             <!-- Add Task Form -->
             <div class="bg-amber-50/80 p-3 rounded-2xl border border-amber-200 space-y-2">
-              <div class="font-bold text-amber-950 text-[11px]">➕ 添加新心愿任务</div>
+              <div class="font-bold text-amber-950 text-[11px]">➕ 添加女方新任务/惩罚</div>
               <div class="grid grid-cols-4 gap-1.5">
                 <input
                   type="text"
@@ -310,7 +484,7 @@
                   @keyup.enter="addGfTask"
                 />
                 <button
-                  class="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs active:scale-95 transition-all"
+                  class="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs active:scale-95 transition-all shadow-xs"
                   @click="addGfTask"
                 >
                   添加
@@ -343,16 +517,19 @@
             </div>
           </div>
 
-          <!-- TAB 4: 男友奖励特权池 (CRUD) -->
+          <!-- TAB 4: 男方买单/特权清单 (CRUD) -->
           <div v-if="activeTab === 'bf_rewards'" class="space-y-3">
             <div class="flex items-center justify-between">
-              <span class="font-extrabold text-gray-900">🎁 男友请客/奖励特权池 (可自由修改)</span>
-              <span class="text-[10px] text-sky-600 font-bold">共 {{ config.boyfriendRewards.length }} 项</span>
+              <div>
+                <span class="font-extrabold text-gray-900 text-xs">🎁 男方买单/特权池 (可自由修改)</span>
+                <div class="text-[10px] text-gray-400">后台抽取倾向：{{ 100 - config.gfPenaltyRatio }}% 概率抽中此池</div>
+              </div>
+              <span class="text-[10px] text-sky-600 font-bold bg-sky-100 px-2 py-0.5 rounded-full">共 {{ config.boyfriendRewards.length }} 项</span>
             </div>
 
             <!-- Add Reward Form -->
             <div class="bg-sky-50/80 p-3 rounded-2xl border border-sky-200 space-y-2">
-              <div class="font-bold text-sky-950 text-[11px]">➕ 添加新奖励特权</div>
+              <div class="font-bold text-sky-950 text-[11px]">➕ 添加男方新特权/买单</div>
               <div class="grid grid-cols-4 gap-1.5">
                 <input
                   type="text"
@@ -376,7 +553,7 @@
                   @keyup.enter="addBfReward"
                 />
                 <button
-                  class="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs active:scale-95 transition-all"
+                  class="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs active:scale-95 transition-all shadow-xs"
                   @click="addBfReward"
                 >
                   添加
@@ -476,11 +653,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { AdminConfig, CardDefinition, TaskItem } from '../types/game'
 import { loadAdminConfig, saveAdminConfig } from '../utils/adminConfig'
 import { saveCoupons } from '../utils/coupons'
 import { apiLogin, apiResetCoupons, resolveAssetUrl } from '../utils/api'
+import { DEFAULT_CARD_DEFINITIONS } from '../utils/cardThemes'
 
 const props = defineProps<{
   cardDefs: CardDefinition[]
@@ -511,6 +689,139 @@ const newPassword = ref('')
 const confirmPassword = ref('')
 const passwordChangeMsg = ref('')
 const passwordChangeSuccess = ref(false)
+
+// Card Management State
+const localCards = ref<CardDefinition[]>([])
+const showAddCardForm = ref(false)
+const newCardForm = ref({
+  name: '',
+  desc: '',
+  tag: '甜蜜',
+  emoji: '💖',
+  image: ''
+})
+const newCardImagePreview = ref('')
+const PRESET_EMOJIS = ['💖', '🌹', '🧋', '🍦', '🎁', '🍫', '🎬', '✈️', '🐱', '🐶', '🍭', '💍']
+
+function initLocalCards() {
+  if (config.value.customCards && Array.isArray(config.value.customCards) && config.value.customCards.length >= 3) {
+    localCards.value = JSON.parse(JSON.stringify(config.value.customCards))
+  } else if (props.cardDefs && props.cardDefs.length > 0) {
+    localCards.value = JSON.parse(JSON.stringify(props.cardDefs))
+    config.value.customCards = JSON.parse(JSON.stringify(props.cardDefs))
+    saveAdminConfig(config.value)
+  } else {
+    localCards.value = JSON.parse(JSON.stringify(DEFAULT_CARD_DEFINITIONS))
+    config.value.customCards = JSON.parse(JSON.stringify(DEFAULT_CARD_DEFINITIONS))
+    saveAdminConfig(config.value)
+  }
+}
+initLocalCards()
+
+watch(() => props.cardDefs, (newDefs) => {
+  if (!config.value.customCards || config.value.customCards.length === 0) {
+    localCards.value = JSON.parse(JSON.stringify(newDefs))
+  }
+})
+
+function handleNewCardFile(event: Event) {
+  const target = event.target as HTMLInputElement
+  if (!target.files || target.files.length === 0) return
+  const file = target.files[0]
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const rawUrl = e.target?.result as string
+    if (!rawUrl) return
+    const img = new Image()
+    img.src = rawUrl
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      const maxDim = 240
+      let width = img.width
+      let height = img.height
+      if (width > height) {
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width)
+          width = maxDim
+        }
+      } else {
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height)
+          height = maxDim
+        }
+      }
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height)
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85)
+        newCardForm.value.image = compressedBase64
+        newCardImagePreview.value = compressedBase64
+      }
+    }
+  }
+  reader.readAsDataURL(file)
+  target.value = ''
+}
+
+function addNewCard() {
+  if (!newCardForm.value.name.trim()) {
+    alert('请输入卡牌名称！')
+    return
+  }
+  const newId = `card_custom_${Date.now()}`
+  const card: CardDefinition = {
+    id: newId,
+    name: newCardForm.value.name.trim(),
+    desc: newCardForm.value.desc.trim() || '恋爱日常',
+    tag: newCardForm.value.tag.trim() || '甜蜜',
+    bgColor: '#FFF5F7',
+    borderColor: '#FDA4AF',
+    customImage: newCardForm.value.image || undefined,
+    defaultIconSvg: `
+      <svg viewBox="0 0 100 100" class="w-full h-full">
+        <circle cx="50" cy="50" r="42" fill="#FFE4E6"/>
+        <text x="50" y="62" font-size="38" text-anchor="middle">${newCardForm.value.emoji || '💖'}</text>
+      </svg>
+    `
+  }
+  localCards.value.push(card)
+  config.value.customCards = [...localCards.value]
+  handleSave()
+  newCardForm.value = { name: '', desc: '', tag: '甜蜜', emoji: '💖', image: '' }
+  newCardImagePreview.value = ''
+  showAddCardForm.value = false
+}
+
+function deleteCard(cardId: string) {
+  if (localCards.value.length <= 3) {
+    alert('⚠️ 游戏关卡至少需要保留 3 种基础卡牌，无法继续删除哦~')
+    return
+  }
+  const card = localCards.value.find(c => c.id === cardId)
+  if (!confirm(`确定要删除卡牌【${card?.name || '此卡牌'}】吗？`)) return
+
+  localCards.value = localCards.value.filter(c => c.id !== cardId)
+  config.value.customCards = [...localCards.value]
+  handleSave()
+}
+
+function updateCardInfo(card: CardDefinition) {
+  const target = config.value.customCards?.find(c => c.id === card.id)
+  if (target) {
+    target.name = card.name
+    target.desc = card.desc
+  }
+  handleSave()
+}
+
+function restoreDefaultCards() {
+  if (!confirm('确定要恢复默认的 9 种卡牌套组吗？')) return
+  config.value.customCards = JSON.parse(JSON.stringify(DEFAULT_CARD_DEFINITIONS))
+  handleSave()
+  initLocalCards()
+}
 
 const currentBfText = computed(() => {
   if (config.value.bfPhotoIndex === 0) return '🎲 随机轮播'
@@ -646,6 +957,19 @@ function handleCardUpload(event: Event, cardId: string) {
       if (ctx) {
         ctx.drawImage(img, 0, 0, width, height)
         const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85)
+
+        // Update in localCards
+        const local = localCards.value.find(c => c.id === cardId)
+        if (local) {
+          local.customImage = compressedBase64
+        }
+        if (config.value.customCards) {
+          const cfgCard = config.value.customCards.find(c => c.id === cardId)
+          if (cfgCard) {
+            cfgCard.customImage = compressedBase64
+          }
+        }
+        handleSave()
         emit('update-card-image', cardId, compressedBase64)
       }
     }

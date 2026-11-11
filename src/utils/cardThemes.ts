@@ -181,6 +181,11 @@ export function loadCardDefinitions(): CardDefinition[] {
   const admin = loadAdminConfig()
   const activeBf = getActiveBfPhoto(admin)
 
+  let baseDefs = DEFAULT_CARD_DEFINITIONS
+  if (admin.customCards && Array.isArray(admin.customCards) && admin.customCards.length >= 3) {
+    baseDefs = admin.customCards
+  }
+
   let savedUserPhotos: Record<string, string> = {}
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -191,7 +196,7 @@ export function loadCardDefinitions(): CardDefinition[] {
     console.error('Failed to load customized tiles', e)
   }
 
-  return DEFAULT_CARD_DEFINITIONS.map(def => {
+  return baseDefs.map(def => {
     let staticImg = def.staticImage
 
     // Dynamic boyfriend photo from admin config
@@ -204,7 +209,7 @@ export function loadCardDefinitions(): CardDefinition[] {
     return {
       ...def,
       staticImage: staticImg,
-      customImage: savedUserPhotos[def.id] || undefined
+      customImage: def.customImage || savedUserPhotos[def.id] || undefined
     }
   })
 }

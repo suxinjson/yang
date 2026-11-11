@@ -7,7 +7,7 @@
           <div>
             <h3 class="text-base font-black text-rose-800 flex items-center gap-1.5">
               <span>🎁</span>
-              <span>情侣心愿存折</span>
+              <span>{{ couponName ? couponName + '存折' : '情侣心愿存折' }}</span>
             </h3>
             <p class="text-[11px] text-rose-500">通关与救场记录的心愿互动，随时向对方出示兑现！</p>
           </div>
@@ -61,7 +61,7 @@
             <!-- Unified Badge -->
             <div class="absolute top-2 right-2 flex items-center gap-1">
               <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                🎁 专属心愿券
+                🎁 {{ couponName || '专属心愿券' }}
               </span>
             </div>
 
@@ -132,6 +132,7 @@ import type { LoveCoupon } from '../types/game'
 
 const props = defineProps<{
   coupons: LoveCoupon[]
+  couponName?: string
 }>()
 
 defineEmits<{

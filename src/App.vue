@@ -67,16 +67,17 @@
           <span class="text-gray-400">/ {{ totalCardsCount }}</span>
         </div>
         <div class="text-[10px] text-gray-400 font-medium">
-          三消消除 · 7格卡槽
+          可选 {{ availableCardsCount }} 张 · 7格卡槽
         </div>
       </div>
     </header>
 
     <!-- Main Game Board Container -->
-    <main class="w-full flex-1 flex flex-col items-center justify-center relative overflow-hidden py-1">
+    <main class="board-section w-full flex-1 flex flex-col items-center justify-center relative py-1">
       <div
-        ref="boardRef"
-        class="board-arena relative w-[360px] h-[390px] rounded-3xl bg-pink-100/35 border-2 border-dashed border-pink-200/80 shadow-inner flex items-center justify-center overflow-hidden"
+        class="board-arena relative rounded-3xl bg-pink-100/35 border-2 border-dashed border-pink-200/80 shadow-inner flex items-center justify-center overflow-hidden"
+        style="aspect-ratio: 420 / 540;"
+        :aria-busy="isResolving"
       >
         <!-- Floating Romantic Background Doodles -->
         <div class="absolute inset-0 pointer-events-none opacity-20 flex flex-wrap gap-8 p-4 items-center justify-center text-2xl select-none">
@@ -121,6 +122,8 @@
         :shuffle-count="propsState.shuffle"
         :slot-count="slotCards.length"
         :is-urgent="slotCards.length >= 6"
+        :disabled="isResolving"
+        :can-undo="canUndo"
         @use-move-out="handleMoveOut"
         @use-undo="handleUndo"
         @use-shuffle="handleShuffle"
@@ -139,6 +142,7 @@
       v-if="showBoyfriendModal"
       :custom-photo="boyfriendCustomPhoto"
       :penalty-coupon="summonCostCoupon"
+      :coupon-name="couponDisplayName"
       @close="closeBoyfriendModal"
     />
 
@@ -148,6 +152,7 @@
       :level="currentLevel"
       :reward-coupon="latestWonCoupon"
       :has-next-level="currentLevel < 3"
+      :coupon-name="couponDisplayName"
       @next-level="handleNextLevel"
       @replay-egg="restartCurrentLevel"
       @open-coupons="openCouponsFromWin"
@@ -164,6 +169,7 @@
     <CouponsModal
       v-if="showCouponsModal"
       :coupons="loveCoupons"
+      :coupon-name="couponDisplayName"
       @close="showCouponsModal = false"
       @redeem="handleRedeemCoupon"
     />
@@ -182,7 +188,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import confetti from 'canvas-confetti'
 import type { CardItem, CardDefinition, LoveCoupon } from './types/game'
 import { sound } from './utils/sound'
@@ -209,6 +215,22 @@ const slotCards = ref<CardItem[]>([])
 const stagedCards = ref<CardItem[]>([])
 const eliminatingIds = ref<number[]>([])
 const cardHistory = ref<{ card: CardItem; fromStatus: 'board' | 'staged' }[]>([])
+const isResolving = computed(() => eliminatingIds.value.length > 0)
+const canUndo = computed(() => cardHistory.value.some(({ card }) => card.status === 'slot' || card.status === 'staged'))
+const gameTimers = new Set<ReturnType<typeof setTimeout>>()
+
+function scheduleGameAction(action: () => void, delay: number) {
+  const timer = setTimeout(() => {
+    gameTimers.delete(timer)
+    action()
+  }, delay)
+  gameTimers.add(timer)
+}
+
+function clearGameTimers() {
+  gameTimers.forEach(timer => clearTimeout(timer))
+  gameTimers.clear()
+}
 
 // Card definitions and theme
 const cardDefs = ref<CardDefinition[]>(loadCardDefinitions())
@@ -239,8 +261,10 @@ const activeBoardCards = computed(() => {
 })
 
 const remainingCardsCount = computed(() => {
-  return allCards.value.filter(c => c.status === 'board').length
+  return allCards.value.filter(c => c.status !== 'cleared').length
 })
+
+const availableCardsCount = computed(() => activeBoardCards.value.filter(c => !c.isCovered).length)
 
 const totalCardsCount = computed(() => {
   return allCards.value.length
@@ -272,7 +296,11 @@ function handleSecretLogoClick() {
   }
 }
 
+const currentAdminConfig = ref<AdminConfig>(loadAdminConfig())
+const couponDisplayName = computed(() => currentAdminConfig.value.couponName || '专属心愿券')
+
 function handleAdminConfigUpdated() {
+  currentAdminConfig.value = loadAdminConfig()
   cardDefs.value = loadCardDefinitions()
 }
 
@@ -293,6 +321,7 @@ function toggleSound() {
 
 // Start / Initialize Level
 function initLevel(level: number) {
+  clearGameTimers()
   currentLevel.value = level
   slotCards.value = []
   stagedCards.value = []
@@ -337,6 +366,7 @@ function handleNextLevel() {
 
 // Click Board Card -> Move into Slot
 function handleCardClick(card: CardItem) {
+  if (isResolving.value || showFailModal.value || showWinModal.value) return
   if (card.status !== 'board' || card.isCovered) return
   if (slotCards.value.length >= 7) return
 
@@ -376,6 +406,7 @@ function insertCardIntoSlot(card: CardItem) {
 
 // Check for 3 identical cards
 function checkMatchElimination() {
+  if (isResolving.value) return
   const typeCountMap: Record<string, CardItem[]> = {}
   for (const card of slotCards.value) {
     if (!typeCountMap[card.type]) {
@@ -402,7 +433,7 @@ function checkMatchElimination() {
       // Sparkle Confetti on match
       triggerMatchConfetti()
 
-      setTimeout(() => {
+      scheduleGameAction(() => {
         // Mark cleared
         threeCards.forEach(c => {
           c.status = 'cleared'
@@ -419,9 +450,11 @@ function checkMatchElimination() {
 
   // If no match and slots are full (>= 7), trigger alert/fail
   if (!matched && slotCards.value.length >= 7) {
-    setTimeout(() => {
-      sound.playFail()
-      showFailModal.value = true
+    scheduleGameAction(() => {
+      if (slotCards.value.length >= 7 && !isResolving.value) {
+        sound.playFail()
+        showFailModal.value = true
+      }
     }, 280)
   }
 }
@@ -443,6 +476,7 @@ function checkWinCondition() {
 
 // Move Out 3 Cards (Props 1)
 function handleMoveOut() {
+  if (isResolving.value) return
   if (propsState.value.moveOut <= 0 || slotCards.value.length === 0) return
 
   propsState.value.moveOut--
@@ -460,6 +494,7 @@ function handleMoveOut() {
 
 // Return Staged card to Slot
 function handleReturnStaged(card: CardItem) {
+  if (isResolving.value || card.status !== 'staged') return
   if (slotCards.value.length >= 7) return
 
   stagedCards.value = stagedCards.value.filter(c => c.id !== card.id)
@@ -471,6 +506,7 @@ function handleReturnStaged(card: CardItem) {
 
 // Undo Last Card (Props 2)
 function handleUndo() {
+  if (isResolving.value) return
   if (propsState.value.undo <= 0 || cardHistory.value.length === 0) return
 
   // 严格寻找最近一张仍在卡槽或暂存区（未被消除）的卡牌进行安全撤回
@@ -501,6 +537,7 @@ function handleUndo() {
 
 // Shuffle Board Cards (Props 3)
 function handleShuffle() {
+  if (isResolving.value) return
   if (propsState.value.shuffle <= 0) return
 
   const boardCards = allCards.value.filter(c => c.status === 'board')
@@ -523,6 +560,7 @@ function handleShuffle() {
 
 // Summon Boyfriend (Ultimate Rescue)
 function handleSummonBoyfriend() {
+  if (isResolving.value) return
   sound.playRescue()
 
   const admin = loadAdminConfig()
@@ -557,6 +595,14 @@ function closeBoyfriendModal() {
 // Custom Photos Management
 function handleUpdateCardImage(cardId: string, base64: string) {
   saveCustomImage(cardId, base64)
+  const admin = loadAdminConfig()
+  if (admin.customCards) {
+    const card = admin.customCards.find(c => c.id === cardId)
+    if (card) {
+      card.customImage = base64
+      saveAdminConfig(admin)
+    }
+  }
   cardDefs.value = loadCardDefinitions()
   // 同步上传至服务器永久持久化
   apiUploadPhoto(cardId, base64).catch(() => {})
@@ -620,6 +666,11 @@ onMounted(async () => {
     showAdminModal.value = true
   }
 })
+
+onUnmounted(() => {
+  clearGameTimers()
+  clearTimeout(logoClickTimer)
+})
 </script>
 
 <style>
@@ -644,5 +695,21 @@ html, body {
 
 .game-wrapper {
   max-width: 440px;
+  min-height: 100svh;
+}
+
+.board-section {
+  padding-inline: 10px;
+}
+
+.board-arena {
+  width: 100%;
+  max-width: 420px;
+  flex-shrink: 0;
+  isolation: isolate;
+}
+
+.board-arena[aria-busy="true"] .game-card {
+  pointer-events: none;
 }
 </style>

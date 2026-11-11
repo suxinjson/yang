@@ -35,7 +35,7 @@
               </div>
             </div>
             <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-200 text-rose-900">
-              🎁 专属心愿券
+              🎁 {{ couponName || '专属心愿券' }}
             </span>
           </div>
           <p class="text-[11px] leading-tight text-rose-800 font-medium">
@@ -65,7 +65,7 @@
             class="w-full py-2.5 rounded-2xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs active:scale-95 transition-all"
             @click="$emit('open-coupons')"
           >
-            查看我的心愿兑换券 🎁
+            查看{{ couponName || '心愿' }}存折 🎁
           </button>
         </div>
       </div>
@@ -81,6 +81,7 @@ const props = defineProps<{
   level: number
   rewardCoupon?: LoveCoupon
   hasNextLevel: boolean
+  couponName?: string
 }>()
 
 defineEmits<{

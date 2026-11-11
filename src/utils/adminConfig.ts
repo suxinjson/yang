@@ -96,6 +96,7 @@ export const DEFAULT_BF_REWARDS: TaskItem[] = [
 export const DEFAULT_ADMIN_CONFIG: AdminConfig = {
   adminPassword: 'admin', // Default password
   bfPhotoIndex: 1, // 1 to 6, 0 for random
+  couponName: '专属心愿券', // Default coupon display name
   gfPenaltyRatio: 75, // Default 75% girlfriend tasks, 25% boyfriend rewards
   summonCostEnabled: true, // Summoning BF requires a penalty task
   activeCardPhotos: {
@@ -118,9 +119,11 @@ export function loadAdminConfig(): AdminConfig {
       return {
         ...DEFAULT_ADMIN_CONFIG,
         ...parsed,
+        couponName: parsed.couponName || '专属心愿券',
         girlfriendTasks: parsed.girlfriendTasks || [...DEFAULT_GF_TASKS],
         boyfriendRewards: parsed.boyfriendRewards || [...DEFAULT_BF_REWARDS],
-        activeCardPhotos: parsed.activeCardPhotos || { ...DEFAULT_ADMIN_CONFIG.activeCardPhotos }
+        activeCardPhotos: parsed.activeCardPhotos || { ...DEFAULT_ADMIN_CONFIG.activeCardPhotos },
+        customCards: parsed.customCards || undefined
       }
     }
   } catch (e) {

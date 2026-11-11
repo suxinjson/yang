@@ -140,8 +140,8 @@ export function generateRandomCoupon(context: string): LoveCoupon {
     chosen = config.boyfriendRewards[idx]
   } else {
     chosen = {
-      title: '手洗臭袜子券',
-      desc: '给男朋友手洗袜子一次，并夸赞袜子香喷喷！',
+      title: '手洗袜子券',
+      desc: '帮对方手洗袜子一次，并夸赞袜子香喷喷！',
       icon: '🧦',
       target: 'girlfriend_pays'
     }

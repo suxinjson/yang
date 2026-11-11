@@ -28,6 +28,7 @@ const couponsFilePath = path.join(dataDir, 'coupons.json')
 const DEFAULT_CONFIG = {
   adminPassword: 'admin',
   bfPhotoIndex: 1, // 1 to 6, 0 for random
+  couponName: '专属心愿券',
   gfPenaltyRatio: 75,
   summonCostEnabled: true,
   activeCardPhotos: {

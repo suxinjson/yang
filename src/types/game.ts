@@ -43,9 +43,11 @@ export interface TaskItem {
 export interface AdminConfig {
   adminPassword: string // Password to unlock admin panel (default: '5201314')
   bfPhotoIndex: number // 1 to 6, or 0 for random
-  gfPenaltyRatio: number // 0 to 100 (percentage of girlfriend tasks)
-  summonCostEnabled: boolean // Whether summoning boyfriend inflicts a penalty on her
+  couponName: string // Configurable name for coupons displayed to user (default: '专属心愿券')
+  gfPenaltyRatio: number // 0 to 100 (percentage of girlfriend tasks vs boyfriend tasks)
+  summonCostEnabled: boolean // Whether summoning boyfriend gives a coupon
   activeCardPhotos: Record<string, string> // cardId -> photo path or base64
+  customCards?: CardDefinition[] // Dynamic card definitions (add, delete, rename, change image)
   girlfriendTasks: TaskItem[] // Customizable GF penalties / tasks
   boyfriendRewards: TaskItem[] // Customizable BF rewards / treats
 }
