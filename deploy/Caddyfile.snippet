@@ -1,28 +1,34 @@
 # ==========================================
 # 《钢了钢》Caddy 反向代理接入配置方案
-# 将以下规则合并到服务器现有的 Caddyfile 中即可
+# 将以下规则加入到服务器上的 Caddyfile 中即可
 # ==========================================
 
-# 方案 A：独立子域名（强烈推荐，如 gang.yourdomain.com）
+# ------------------------------------------
+# 方案 A：纯 IP 二级子路径访问（如 https://124.70.184.136/gang/）
+# 在你已有的 IP 配置块内（在“会员管家”原项目的默认路由之前）加入以下规则：
+# ------------------------------------------
+
+    # 1. 自动将 /gang 重定向到带斜杠的 /gang/（保证前端相对路径正确）
+    redir /gang /gang/
+
+    # 2. 将 /gang/* 流量自动去除 /gang 前缀并反代至本容器
+    handle_path /gang/* {
+        reverse_proxy 127.0.0.1:3000
+    }
+
+# ------------------------------------------
+# 方案 B：独立二级域名访问（强烈推荐，如 gang.yourdomain.com）
 # Caddy 会自动向 Let's Encrypt 申请 SSL 证书并强制开启 HTTPS / HTTP3
+# ------------------------------------------
+
 gang.yourdomain.com {
     encode zstd gzip
 
-    # 安全响应头
     header {
         Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "no-referrer"
     }
 
-    # 反代至本项目的容器服务
     reverse_proxy 127.0.0.1:3000
 }
-
-# ------------------------------------------
-# 方案 B：如果使用纯 IP 访问（与你已有项目的 Caddyfile.ip 模式一致）
-# 在你已有的 IP HTTPS 块内增加 handle 路由：
-#
-# handle_path /gang/* {
-#     reverse_proxy 127.0.0.1:3000
-# }

@@ -11,7 +11,7 @@
         <!-- Boyfriend Avatar / Photo -->
         <div class="w-24 h-24 mx-auto mt-3 mb-2.5 rounded-full border-4 border-rose-400 p-1 bg-white shadow-lg overflow-hidden relative group">
           <template v-if="customPhoto">
-            <img :src="customPhoto" alt="男友帅照" class="w-full h-full object-cover rounded-full" />
+            <img :src="resolveAssetUrl(customPhoto)" alt="男友帅照" class="w-full h-full object-cover rounded-full" />
           </template>
           <template v-else>
             <div class="w-full h-full rounded-full bg-rose-100 flex items-center justify-center text-4xl">
@@ -69,6 +69,7 @@
 
 <script setup lang="ts">
 import type { LoveCoupon } from '../types/game'
+import { resolveAssetUrl } from '../utils/api'
 
 defineProps<{
   customPhoto?: string

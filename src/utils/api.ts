@@ -4,10 +4,23 @@ const STORAGE_API_KEY = 'ganglegang_api_url'
 const TOKEN_KEY = 'ganglegang_admin_token'
 
 /**
+ * 动态根据当前部署路径（根路径或 /gang/ 二级子路径）补全静态资源绝对 URL
+ */
+export function resolveAssetUrl(url: string | undefined): string {
+  if (!url) return ''
+  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+  const clean = url.replace(/^\/+/, '')
+  const prefix = typeof window !== 'undefined' && window.location.pathname.startsWith('/gang') ? '/gang/' : '/'
+  return prefix + clean
+}
+
+/**
  * 动态获取后端 API 基础地址：
  * 1. 优先使用本地配置存储的自定义服务器地址 (便于在原生 APK 或测试环境中随时切换)
  * 2. 其次使用环境变量 VITE_API_URL (编译期传入)
- * 3. 浏览器端默认取 window.location.origin
+ * 3. 浏览器端默认取 window.location.origin (如果在 /gang 二级子路径下则自动附带 /gang 前缀)
  */
 export function getBaseUrl(): string {
   if (typeof window === 'undefined') return ''
@@ -18,8 +31,9 @@ export function getBaseUrl(): string {
   const envUrl = (import.meta as any).env?.VITE_API_URL
   if (envUrl) return envUrl.trim().replace(/\/+$/, '')
 
-  // 如果在原生 Capacitor 环境中（origin 为 localhost），提示或默认使用当前网页宿主
-  return window.location.origin
+  const origin = window.location.origin
+  const isGangSubpath = window.location.pathname.startsWith('/gang')
+  return isGangSubpath ? `${origin}/gang` : origin
 }
 
 export function setCustomBaseUrl(url: string) {

@@ -57,6 +57,7 @@
 import { ref, computed } from 'vue'
 import type { CardItem, CardDefinition } from '../types/game'
 import { sound } from '../utils/sound'
+import { resolveAssetUrl } from '../utils/api'
 
 const props = defineProps<{
   card: CardItem
@@ -72,7 +73,8 @@ const emit = defineEmits<{
 const imageFailed = ref(false)
 
 const displayImage = computed(() => {
-  return props.def?.customImage || props.def?.staticImage || null
+  const raw = props.def?.customImage || props.def?.staticImage
+  return raw ? resolveAssetUrl(raw) : null
 })
 
 // Compute absolute position on the board based on card.x, card.y, and layer

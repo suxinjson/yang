@@ -153,7 +153,7 @@
                   :class="config.bfPhotoIndex === i ? 'border-sky-500 ring-2 ring-sky-400 shadow-md' : 'border-gray-200 bg-white'"
                   @click="selectBfPhoto(i)"
                 >
-                  <img :src="`/photos/bf_${i}.jpg`" class="w-full h-full object-cover" />
+                  <img :src="resolveAssetUrl(`/photos/bf_${i}.jpg`)" class="w-full h-full object-cover" />
                   <div class="absolute bottom-0 inset-x-0 bg-gray-950/60 text-white text-[8px] font-bold text-center py-0.5">
                     帅照 {{ i }}
                   </div>
@@ -181,7 +181,7 @@
                     <div class="w-10 h-10 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center bg-gray-50 flex-shrink-0">
                       <img
                         v-if="card.customImage || card.staticImage"
-                        :src="card.customImage || card.staticImage"
+                        :src="resolveAssetUrl(card.customImage || card.staticImage)"
                         class="w-full h-full object-cover"
                       />
                       <div v-else class="w-6 h-6 flex items-center justify-center" v-html="card.defaultIconSvg"></div>
@@ -480,7 +480,7 @@ import { ref, computed } from 'vue'
 import type { AdminConfig, CardDefinition, TaskItem } from '../types/game'
 import { loadAdminConfig, saveAdminConfig } from '../utils/adminConfig'
 import { saveCoupons } from '../utils/coupons'
-import { apiLogin, apiResetCoupons } from '../utils/api'
+import { apiLogin, apiResetCoupons, resolveAssetUrl } from '../utils/api'
 
 const props = defineProps<{
   cardDefs: CardDefinition[]
