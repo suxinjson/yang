@@ -9,11 +9,11 @@
 # ------------------------------------------
 
     # 1. 自动将 /gang 重定向到带斜杠的 /gang/（保证前端相对路径正确）
-    redir /gang /gang/
+    redir /gang /gang/ 308
 
     # 2. 将 /gang/* 流量自动去除 /gang 前缀并反代至本容器
     handle_path /gang/* {
-        reverse_proxy 127.0.0.1:3000
+        reverse_proxy ganglegang:3000
     }
 
 # ------------------------------------------
