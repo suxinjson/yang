@@ -10,6 +10,7 @@ RUN npm install --omit=dev express cors
 COPY dist ./dist
 COPY public ./public
 COPY server.js ./
+COPY shared ./shared
 
 # Create data directory for persistence
 RUN mkdir -p /app/data

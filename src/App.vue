@@ -76,7 +76,7 @@
     <main class="board-section w-full flex-1 flex flex-col items-center justify-center relative py-1">
       <div
         class="board-arena relative rounded-3xl bg-pink-100/35 border-2 border-dashed border-pink-200/80 shadow-inner flex items-center justify-center overflow-hidden"
-        :style="{ aspectRatio: `${BOARD_LAYOUT.width} / ${BOARD_LAYOUT.height}` }"
+        :style="{ aspectRatio: `${boardLayout.width} / ${boardLayout.height}`, maxWidth: `${boardLayout.width}px` }"
         :aria-busy="isResolving"
       >
         <!-- Floating Romantic Background Doodles -->
@@ -90,6 +90,7 @@
           :key="card.id"
           :card="card"
           :def="getCardDef(card.type)"
+          :board-layout="boardLayout"
           @click-card="handleCardClick"
         />
 
@@ -110,7 +111,7 @@
       <SlotTray
         :slot-cards="slotCards"
         :staged-cards="stagedCards"
-        :card-defs="cardDefs"
+        :card-defs="roundCardDefs"
         :eliminating-ids="eliminatingIds"
         @return-staged="handleReturnStaged"
       />
@@ -193,11 +194,12 @@ import confetti from 'canvas-confetti'
 import type { CardItem, CardDefinition, LoveCoupon, AdminConfig } from './types/game'
 import { sound } from './utils/sound'
 import { loadCardDefinitions, saveCustomImage, removeCustomImage } from './utils/cardThemes'
-import { generateLevel1, generateLevel2, generateLevel3, updateCardCoverage } from './utils/levelGenerator'
+import { createLevel, updateCardCoverage } from './utils/levelGenerator'
 import { loadCoupons, redeemCoupon, generateRandomCoupon, syncCouponsFromServer } from './utils/coupons'
 import { loadAdminConfig, saveAdminConfig, syncAdminConfigFromServer } from './utils/adminConfig'
 import { apiUploadPhoto } from './utils/api'
-import { BOARD_LAYOUT } from './utils/boardGeometry'
+import { getBoardLayout } from './utils/boardGeometry'
+import { defaultGameSettings, normalizeGameSettings } from '../shared/gameConfig.js'
 
 // Components
 import CardComponent from './components/Card.vue'
@@ -235,6 +237,9 @@ function clearGameTimers() {
 
 // Card definitions and theme
 const cardDefs = ref<CardDefinition[]>(loadCardDefinitions())
+const roundCardDefs = ref<CardDefinition[]>([])
+const activeGameSettings = ref(defaultGameSettings())
+const boardLayout = computed(() => getBoardLayout(activeGameSettings.value))
 const soundEnabled = ref<boolean>(true)
 
 // Modals
@@ -303,6 +308,7 @@ const couponDisplayName = computed(() => currentAdminConfig.value.couponName || 
 function handleAdminConfigUpdated() {
   currentAdminConfig.value = loadAdminConfig()
   cardDefs.value = loadCardDefinitions()
+  loveCoupons.value = loadCoupons()
 }
 
 const unusedCouponsCount = computed(() => {
@@ -312,7 +318,7 @@ const unusedCouponsCount = computed(() => {
 // --- Methods ---
 
 function getCardDef(type: string): CardDefinition | undefined {
-  return cardDefs.value.find(d => d.id === type)
+  return roundCardDefs.value.find(d => d.id === type)
 }
 
 function toggleSound() {
@@ -338,19 +344,12 @@ function initLevel(level: number) {
     shuffle: 3
   }
 
-  const availableTypes = cardDefs.value.map(d => d.id)
-
-  let cards: CardItem[] = []
-  if (level === 1) {
-    cards = generateLevel1(availableTypes)
-  } else if (level === 2) {
-    cards = generateLevel2(availableTypes)
-  } else {
-    cards = generateLevel3(availableTypes)
-  }
-
-  updateCardCoverage(cards)
-  allCards.value = cards
+  currentAdminConfig.value = loadAdminConfig()
+  cardDefs.value = loadCardDefinitions()
+  roundCardDefs.value = cardDefs.value.map(def => ({ ...def }))
+  activeGameSettings.value = normalizeGameSettings(currentAdminConfig.value.gameSettings)
+  const availableTypes = roundCardDefs.value.map(d => d.id)
+  allCards.value = createLevel(level as 1 | 2 | 3, availableTypes, Math.random, activeGameSettings.value).cards
 }
 
 function restartCurrentLevel() {
@@ -650,9 +649,7 @@ onMounted(async () => {
     currentAdminConfig.value = await syncAdminConfigFromServer()
     cardDefs.value = loadCardDefinitions()
     const coupons = await syncCouponsFromServer()
-    if (coupons && coupons.length > 0) {
-      loveCoupons.value = coupons
-    }
+    loveCoupons.value = coupons
   } catch (e) {
     console.warn('Initial server sync failed, running in local mode', e)
   }

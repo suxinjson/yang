@@ -88,7 +88,10 @@ export function loadCoupons(): LoveCoupon[] {
   try {
     const raw = localStorage.getItem(COUPON_STORAGE_KEY)
     if (raw) {
-      return JSON.parse(raw)
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return parsed.filter(coupon => coupon && typeof coupon.id === 'string' && typeof coupon.title === 'string')
+      }
     }
   } catch (e) {
     console.error('Failed to load coupons', e)
@@ -181,7 +184,7 @@ export function redeemCoupon(id: string): LoveCoupon[] {
 export async function syncCouponsFromServer(): Promise<LoveCoupon[]> {
   try {
     const list = await apiFetchCoupons()
-    if (list && list.length > 0) {
+    if (list !== null) {
       saveCoupons(list)
       return list
     }

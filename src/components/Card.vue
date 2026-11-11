@@ -59,12 +59,13 @@ import { ref, computed, watch } from 'vue'
 import type { CardItem, CardDefinition } from '../types/game'
 import { sound } from '../utils/sound'
 import { resolveAssetUrl } from '../utils/api'
-import { getBoardCardStyle } from '../utils/boardGeometry'
+import { getBoardCardStyle, type BOARD_LAYOUT } from '../utils/boardGeometry'
 
 const props = defineProps<{
   card: CardItem
   def?: CardDefinition
   isEliminating?: boolean
+  boardLayout?: typeof BOARD_LAYOUT
 }>()
 
 const emit = defineEmits<{
@@ -85,7 +86,7 @@ const cardStyle = computed(() => {
   if (props.card.status === 'board') {
     return {
       position: 'absolute' as const,
-      ...getBoardCardStyle(props.card),
+      ...getBoardCardStyle(props.card, props.boardLayout),
       transition: 'filter 0.22s, opacity 0.22s'
     }
   }

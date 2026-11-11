@@ -75,6 +75,7 @@ export async function apiLogin(password: string): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl}/api/admin/login`, {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password })
     })
@@ -85,11 +86,7 @@ export async function apiLogin(password: string): Promise<boolean> {
     }
     return false
   } catch (e) {
-    console.warn('API login offline fallback', e)
-    if (password === 'admin') {
-      setAdminToken('offline_token_' + Date.now())
-      return true
-    }
+    console.warn('API login unavailable', e)
     return false
   }
 }
@@ -97,7 +94,7 @@ export async function apiLogin(password: string): Promise<boolean> {
 export async function apiFetchConfig(): Promise<AdminConfig | null> {
   const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${baseUrl}/api/config`)
+    const res = await fetch(`${baseUrl}/api/config`, { signal: AbortSignal.timeout(8000) })
     if (res.ok) {
       return await res.json()
     }
@@ -113,8 +110,10 @@ export async function apiSaveConfig(config: AdminConfig): Promise<boolean> {
     const res = await fetch(`${baseUrl}/api/config`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(config)
+      body: JSON.stringify(config),
+      signal: AbortSignal.timeout(8000)
     })
+    if (res.status === 401) setAdminToken(null)
     return res.ok
   } catch (e) {
     console.warn('Failed to save config to server', e)
@@ -122,17 +121,32 @@ export async function apiSaveConfig(config: AdminConfig): Promise<boolean> {
   }
 }
 
-export async function apiFetchCoupons(): Promise<LoveCoupon[]> {
+export async function apiChangePassword(password: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/admin/password`, {
+      method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ password }), signal: AbortSignal.timeout(8000)
+    })
+    if (!res.ok) return false
+    const data = await res.json()
+    setAdminToken(data.token)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function apiFetchCoupons(): Promise<LoveCoupon[] | null> {
   const baseUrl = getBaseUrl()
   try {
-    const res = await fetch(`${baseUrl}/api/coupons`)
+    const res = await fetch(`${baseUrl}/api/coupons`, { signal: AbortSignal.timeout(8000) })
     if (res.ok) {
-      return await res.json()
+      const data = await res.json()
+      return Array.isArray(data) ? data : null
     }
   } catch (e) {
     console.warn('Failed to fetch coupons from server', e)
   }
-  return []
+  return null
 }
 
 export async function apiAddCoupon(coupon: LoveCoupon): Promise<boolean> {
@@ -141,7 +155,8 @@ export async function apiAddCoupon(coupon: LoveCoupon): Promise<boolean> {
     const res = await fetch(`${baseUrl}/api/coupons`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(coupon)
+      body: JSON.stringify(coupon),
+      signal: AbortSignal.timeout(8000)
     })
     return res.ok
   } catch (e) {
@@ -156,7 +171,8 @@ export async function apiRedeemCoupon(id: string): Promise<boolean> {
     const res = await fetch(`${baseUrl}/api/coupons/redeem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
+      body: JSON.stringify({ id }),
+      signal: AbortSignal.timeout(8000)
     })
     return res.ok
   } catch (e) {
@@ -170,7 +186,8 @@ export async function apiResetCoupons(): Promise<boolean> {
   try {
     const res = await fetch(`${baseUrl}/api/coupons/reset`, {
       method: 'POST',
-      headers: getAuthHeaders()
+      headers: getAuthHeaders(),
+      signal: AbortSignal.timeout(8000)
     })
     return res.ok
   } catch (e) {
@@ -185,7 +202,8 @@ export async function apiUploadPhoto(cardId: string, base64: string): Promise<st
     const res = await fetch(`${baseUrl}/api/upload`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ cardId, base64 })
+      body: JSON.stringify({ cardId, base64 }),
+      signal: AbortSignal.timeout(8000)
     })
     const data = await res.json()
     if (data.success && data.path) {

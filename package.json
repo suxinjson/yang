@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "test": "playwright test",
-    "build": "tsc && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "start": "node server.js"
   },
@@ -16,8 +17,9 @@
     "@types/canvas-confetti": "^1.9.0",
     "sharp": "^0.35.5",
     "tailwindcss": "^4.3.5",
-    "typescript": "~7.0.2",
-    "vite": "^8.3.6"
+    "typescript": "~6.0.3",
+    "vite": "^8.3.6",
+    "vue-tsc": "^3.3.14"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",

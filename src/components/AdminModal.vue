@@ -81,6 +81,11 @@
         <div class="flex items-center gap-1 py-2 border-b border-gray-100 text-[11px] font-bold overflow-x-auto">
           <button
             class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
+            :class="activeTab === 'game' ? 'bg-slate-900 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
+            @click="activeTab = 'game'"
+          >🎲 关卡与布局</button>
+          <button
+            class="px-2.5 py-1.5 rounded-xl whitespace-nowrap transition-all"
             :class="activeTab === 'photos' ? 'bg-slate-900 text-white shadow-xs' : 'bg-gray-100 text-gray-600'"
             @click="activeTab = 'photos'"
           >
@@ -118,6 +123,7 @@
 
         <!-- Tab Content Body -->
         <div class="flex-1 overflow-y-auto py-3 space-y-4 pr-1 text-xs">
+          <GameSettingsPanel ref="gamePanel" v-show="activeTab === 'game'" :settings="config.gameSettings" :busy="saveStatus === 'saving'" @save="saveGameSettings" />
 
           <!-- TAB 1: 卡牌图片与增减全面配置 -->
           <div v-if="activeTab === 'photos'" class="space-y-4">
@@ -635,17 +641,18 @@
 
         <!-- Footer -->
         <div class="pt-3 border-t border-gray-100 flex items-center justify-between">
-          <span class="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-            <span>✓</span>
-            <span>修改已实时生效</span>
+          <span role="status" class="text-[10px] font-bold flex items-center gap-1 pr-2" :class="saveStatus === 'synced' ? 'text-emerald-600' : 'text-amber-700'">
+            <span>{{ saveStatusText }}</span>
           </span>
           <button
             class="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md active:scale-95 transition-all"
-            @click="$emit('close')"
+            :disabled="saveStatus === 'saving'"
+            @click="saveAndClose"
           >
             保存并退出后台
           </button>
         </div>
+        <button v-if="saveStatus === 'local'" class="mt-2 text-xs font-bold text-sky-700" @click="isAuthenticated = false">重新登录以同步配置</button>
 
       </div>
     </div>
@@ -654,11 +661,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { AdminConfig, CardDefinition, TaskItem } from '../types/game'
+import type { AdminConfig, CardDefinition, GameSettings } from '../types/game'
 import { loadAdminConfig, saveAdminConfig } from '../utils/adminConfig'
 import { saveCoupons } from '../utils/coupons'
-import { apiLogin, apiResetCoupons, resolveAssetUrl } from '../utils/api'
+import { apiLogin, apiResetCoupons, apiChangePassword, getAdminToken, resolveAssetUrl } from '../utils/api'
 import { DEFAULT_CARD_DEFINITIONS } from '../utils/cardThemes'
+import GameSettingsPanel from './GameSettingsPanel.vue'
 
 const props = defineProps<{
   cardDefs: CardDefinition[]
@@ -672,15 +680,19 @@ const emit = defineEmits<{
 }>()
 
 // Session authentication state
-const isAuthenticated = ref<boolean>(sessionStorage.getItem('gang_admin_auth') === 'true')
+const isAuthenticated = ref<boolean>(Boolean(getAdminToken()))
 const passwordInput = ref('')
 const loginError = ref('')
 
 // Tabs
-const activeTab = ref<'photos' | 'rules' | 'gf_tasks' | 'bf_rewards' | 'security'>('photos')
+const activeTab = ref<'game' | 'photos' | 'rules' | 'gf_tasks' | 'bf_rewards' | 'security'>('game')
 
 // Config
 const config = ref<AdminConfig>(loadAdminConfig())
+const gamePanel = ref<InstanceType<typeof GameSettingsPanel> | null>(null)
+const saveStatus = ref<'idle' | 'saving' | 'synced' | 'local' | 'failed'>('idle')
+const saveStatusText = computed(() => ({ idle: '修改后请保存；关卡参数下局应用', saving: '正在保存到服务器…', synced: '已保存并同步到服务器', local: '仅保存在本机，未同步；请检查网络或重新登录', failed: '保存失败，请重试或释放本机存储空间' })[saveStatus.value])
+let saveVersion = 0
 
 // Form inputs
 const newGfTask = ref({ title: '', desc: '', icon: '🧦' })
@@ -709,11 +721,9 @@ function initLocalCards() {
   } else if (props.cardDefs && props.cardDefs.length > 0) {
     localCards.value = JSON.parse(JSON.stringify(props.cardDefs))
     config.value.customCards = JSON.parse(JSON.stringify(props.cardDefs))
-    saveAdminConfig(config.value)
   } else {
     localCards.value = JSON.parse(JSON.stringify(DEFAULT_CARD_DEFINITIONS))
     config.value.customCards = JSON.parse(JSON.stringify(DEFAULT_CARD_DEFINITIONS))
-    saveAdminConfig(config.value)
   }
 }
 initLocalCards()
@@ -830,9 +840,9 @@ const currentBfText = computed(() => {
 
 // Authentication
 async function handleLogin() {
-  const pwd = passwordInput.value.trim()
+  const pwd = passwordInput.value
   const success = await apiLogin(pwd)
-  if (success || pwd === config.value.adminPassword) {
+  if (success) {
     isAuthenticated.value = true
     sessionStorage.setItem('gang_admin_auth', 'true')
     loginError.value = ''
@@ -847,9 +857,24 @@ function selectBfPhoto(index: number) {
   handleSave()
 }
 
-function handleSave() {
-  saveAdminConfig(config.value)
+async function handleSave() {
+  const version = ++saveVersion
+  saveStatus.value = 'saving'
+  const result = await saveAdminConfig(config.value)
+  if (version === saveVersion) saveStatus.value = result
   emit('config-updated')
+  return result
+}
+
+function saveGameSettings(settings: GameSettings) {
+  config.value.gameSettings = settings
+  handleSave()
+}
+
+async function saveAndClose() {
+  if (gamePanel.value) config.value.gameSettings = gamePanel.value.prepareSettings()
+  const result = await handleSave()
+  if (result === 'synced') emit('close')
 }
 
 // GF Tasks
@@ -891,7 +916,7 @@ function removeBfReward(index: number) {
 }
 
 // Password Change
-function handleChangePassword() {
+async function handleChangePassword() {
   if (!newPassword.value || newPassword.value.length < 3) {
     passwordChangeMsg.value = '密码长度至少需要 3 位！'
     passwordChangeSuccess.value = false
@@ -902,8 +927,11 @@ function handleChangePassword() {
     passwordChangeSuccess.value = false
     return
   }
-  config.value.adminPassword = newPassword.value
-  handleSave()
+  if (!await apiChangePassword(newPassword.value)) {
+    passwordChangeMsg.value = '密码修改失败，请检查网络并重新登录后重试！'
+    passwordChangeSuccess.value = false
+    return
+  }
   passwordChangeMsg.value = '密码修改成功，请牢记！'
   passwordChangeSuccess.value = true
   newPassword.value = ''
@@ -912,8 +940,11 @@ function handleChangePassword() {
 
 async function resetAllCoupons() {
   if (confirm('确认清空当前所有的心愿存折记录吗？')) {
+    if (!await apiResetCoupons()) {
+      alert('清空失败，请检查网络或重新登录后重试！')
+      return
+    }
     saveCoupons([])
-    await apiResetCoupons()
     emit('config-updated')
     alert('心愿存折已清空！')
   }

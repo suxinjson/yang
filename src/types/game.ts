@@ -40,8 +40,25 @@ export interface TaskItem {
   target: CouponTarget
 }
 
+export interface LevelSettings {
+  minCards: number
+  maxCards: number
+  types: number
+  layers: number
+  spreadX: number
+  spreadY: number
+  randomness: number
+  layout: 'scatter' | 'heart'
+}
+
+export interface GameSettings {
+  boardWidth: number
+  boardHeight: number
+  levels: [LevelSettings, LevelSettings, LevelSettings]
+}
+
 export interface AdminConfig {
-  adminPassword: string // Password to unlock admin panel (default: '5201314')
+  gameSettings: GameSettings
   bfPhotoIndex: number // 1 to 6, or 0 for random
   couponName: string // Configurable name for coupons displayed to user (default: '专属心愿券')
   gfPenaltyRatio: number // 0 to 100 (percentage of girlfriend tasks vs boyfriend tasks)

@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { fileURLToPath } from 'url'
+import { defaultGameSettings, normalizeGameSettings } from './shared/gameConfig.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -16,7 +17,7 @@ app.use(express.json({ limit: '25mb' }))
 app.use(express.urlencoded({ extended: true, limit: '25mb' }))
 
 // Data Directory for persistent server storage
-const dataDir = path.join(__dirname, 'data')
+const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data')
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true })
 }
@@ -26,6 +27,7 @@ const couponsFilePath = path.join(dataDir, 'coupons.json')
 
 // Initial Default Config
 const DEFAULT_CONFIG = {
+  gameSettings: defaultGameSettings(),
   adminPassword: 'admin',
   bfPhotoIndex: 1, // 1 to 6, 0 for random
   couponName: '专属心愿券',
@@ -147,7 +149,7 @@ function loadServerConfig() {
   if (fs.existsSync(configFilePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'))
-      return { ...DEFAULT_CONFIG, ...data }
+      return { ...DEFAULT_CONFIG, ...data, gameSettings: normalizeGameSettings(data?.gameSettings) }
     } catch (e) {
       console.error('Failed to read config file', e)
     }
@@ -208,19 +210,12 @@ function generateAdminToken() {
 }
 
 function verifyAdminToken(token) {
-  if (!token) return false
-  if (token.startsWith('offline_token_')) return true
+  if (typeof token !== 'string' || !token) return false
   const expiresAt = adminSessions.get(token)
   if (expiresAt && expiresAt > Date.now()) {
     return true
   }
-  // Backward compatibility for timestamp-based auth tokens within 24h
-  if (token.startsWith('auth_')) {
-    const ts = parseInt(token.replace('auth_', ''), 10)
-    if (!isNaN(ts) && Date.now() - ts < 24 * 60 * 60 * 1000) {
-      return true
-    }
-  }
+  adminSessions.delete(token)
   return false
 }
 
@@ -228,9 +223,7 @@ function verifyAdminToken(token) {
 function requireAdminAuth(req, res, next) {
   const authHeader = req.headers.authorization || ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : req.headers['x-admin-token']
-  const cfg = loadServerConfig()
-  
-  if (verifyAdminToken(token) || req.headers['x-admin-password'] === cfg.adminPassword) {
+  if (verifyAdminToken(token)) {
     return next()
   }
   return res.status(401).json({ success: false, error: 'Unauthorized: 管理员身份验证失败或凭据已过期' })
@@ -266,7 +259,7 @@ app.post('/api/admin/login', (req, res) => {
     return res.status(429).json({ success: false, message: '尝试次数过多，请稍后再试！' })
   }
 
-  const { password } = req.body
+  const { password } = req.body || {}
   const cfg = loadServerConfig()
   if (password === cfg.adminPassword) {
     loginAttempts.delete(clientIp)
@@ -280,6 +273,22 @@ app.post('/api/admin/login', (req, res) => {
 })
 
 // 2. Get Game / Admin Config
+function publicConfig(config) {
+  const { adminPassword: _password, ...publicFields } = config
+  return publicFields
+}
+
+app.post('/api/admin/password', requireAdminAuth, (req, res) => {
+  const password = req.body?.password
+  if (typeof password !== 'string' || password.trim().length < 3 || password.length > 128) {
+    return res.status(400).json({ success: false, error: '密码长度应为 3–128 位' })
+  }
+  const current = loadServerConfig()
+  saveServerConfig({ ...current, adminPassword: password })
+  adminSessions.clear()
+  res.json({ success: true, token: generateAdminToken() })
+})
+
 app.get('/api/config', (req, res) => {
   const cfg = loadServerConfig()
   // Calculate active boyfriend photo if 0 (random)
@@ -291,7 +300,7 @@ app.get('/api/config', (req, res) => {
 
   // Return public safe config
   res.json({
-    ...cfg,
+    ...publicConfig(cfg),
     activeBfPhoto: activeBf
   })
 })
@@ -299,13 +308,30 @@ app.get('/api/config', (req, res) => {
 // 3. Save Admin Config (From Web Admin Panel - Protected)
 app.post('/api/config', requireAdminAuth, (req, res) => {
   const newConfig = req.body
-  if (!newConfig) {
+  if (!newConfig || typeof newConfig !== 'object' || Array.isArray(newConfig)) {
     return res.status(400).json({ error: 'Invalid config' })
   }
   const current = loadServerConfig()
-  const merged = { ...current, ...newConfig }
+  const allowedKeys = ['bfPhotoIndex', 'couponName', 'gfPenaltyRatio', 'summonCostEnabled', 'activeCardPhotos', 'customCards', 'girlfriendTasks', 'boyfriendRewards']
+  const patch = Object.fromEntries(allowedKeys.filter(key => Object.hasOwn(newConfig, key)).map(key => [key, newConfig[key]]))
+  if (Object.hasOwn(patch, 'customCards') && (!Array.isArray(patch.customCards) || patch.customCards.length < 3 || patch.customCards.some(card => !card || typeof card.id !== 'string' || typeof card.name !== 'string') || new Set(patch.customCards.map(card => card.id)).size !== patch.customCards.length)) {
+    return res.status(400).json({ success: false, error: '至少保留三种有效且不重复的卡牌' })
+  }
+  for (const key of ['girlfriendTasks', 'boyfriendRewards']) {
+    if (Object.hasOwn(patch, key) && (!Array.isArray(patch[key]) || patch[key].some(task => !task || typeof task.id !== 'string' || typeof task.title !== 'string'))) {
+      return res.status(400).json({ success: false, error: '任务配置格式不正确' })
+    }
+  }
+  if (Object.hasOwn(patch, 'activeCardPhotos') && (!patch.activeCardPhotos || typeof patch.activeCardPhotos !== 'object' || Array.isArray(patch.activeCardPhotos))) {
+    return res.status(400).json({ success: false, error: '图片配置格式不正确' })
+  }
+  if (Object.hasOwn(patch, 'bfPhotoIndex')) patch.bfPhotoIndex = typeof patch.bfPhotoIndex === 'number' && Number.isFinite(patch.bfPhotoIndex) ? Math.max(0, Math.min(6, Math.round(patch.bfPhotoIndex))) : current.bfPhotoIndex
+  if (Object.hasOwn(patch, 'gfPenaltyRatio')) patch.gfPenaltyRatio = typeof patch.gfPenaltyRatio === 'number' && Number.isFinite(patch.gfPenaltyRatio) ? Math.max(0, Math.min(100, Math.round(patch.gfPenaltyRatio))) : current.gfPenaltyRatio
+  if (Object.hasOwn(patch, 'couponName')) patch.couponName = typeof patch.couponName === 'string' ? patch.couponName.trim().slice(0, 30) || '专属心愿券' : current.couponName
+  if (Object.hasOwn(patch, 'summonCostEnabled') && typeof patch.summonCostEnabled !== 'boolean') patch.summonCostEnabled = current.summonCostEnabled
+  const merged = { ...current, ...patch, gameSettings: Object.hasOwn(newConfig, 'gameSettings') ? normalizeGameSettings(newConfig.gameSettings) : current.gameSettings }
   saveServerConfig(merged)
-  res.json({ success: true, config: merged })
+  res.json({ success: true, config: publicConfig(merged) })
 })
 
 // 4. Get Coupons List
@@ -413,7 +439,8 @@ app.use((req, res) => {
   }
 })
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
+  if (process.send) process.send({ port: server.address().port })
   console.log(`\n==================================================`)
   console.log(`🚀 《钢了钢》服务已在服务器启动！`)
   console.log(`📱 女朋友安卓端访问: http://0.0.0.0:${PORT}/`)

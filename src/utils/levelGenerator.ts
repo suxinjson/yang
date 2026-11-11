@@ -1,5 +1,6 @@
-import type { CardItem } from '../types/game'
-import { BOARD_MAX_X, BOARD_MAX_Y, CARD_GRID_WIDTH, CARD_GRID_HEIGHT } from './boardGeometry.ts'
+import type { CardItem, GameSettings, LevelSettings } from '../types/game'
+import { CARD_GRID_WIDTH, CARD_GRID_HEIGHT } from './boardGeometry.ts'
+import { defaultGameSettings, normalizeGameSettings, layoutGrid } from '../../shared/gameConfig.js'
 
 interface CardPosition {
   x: number
@@ -9,11 +10,12 @@ interface CardPosition {
 
 type RandomSource = () => number
 
-export const LEVEL_RULES = {
-  1: { minSets: 6, maxSets: 8, types: 3, layers: 2, batchSets: 2 },
-  2: { minSets: 30, maxSets: 36, types: 7, layers: 4, batchSets: 3 },
-  3: { minSets: 40, maxSets: 48, types: 8, layers: 6, batchSets: 3 }
-} as const
+const defaults = defaultGameSettings().levels
+function defaultRule(index: number) {
+  const rule = defaults[index]
+  return { minSets: rule.minCards / 3, maxSets: rule.maxCards / 3, types: rule.types, layers: rule.layers }
+}
+export const LEVEL_RULES = { 1: defaultRule(0), 2: defaultRule(1), 3: defaultRule(2) }
 
 export function checkCardOverlap(
   posA: { x: number; y: number },
@@ -36,25 +38,23 @@ function between(min: number, max: number, random: RandomSource) {
   return min + random() * (max - min)
 }
 
-function clamp(value: number, max: number) {
-  return Math.max(0, Math.min(max, value))
-}
-
 // Rows have enough spacing to prevent overlap within a layer, even with jitter.
-function createLayer(layer: number, heart: boolean, random: RandomSource): CardPosition[] {
+function createLayer(layer: number, settings: GameSettings, rules: LevelSettings, random: RandomSource): CardPosition[] {
   const positions: CardPosition[] = []
-  const shiftX = between(-0.15, 0.15, random)
-  const shiftY = between(-0.08, 0.08, random)
+  const grid = layoutGrid(settings, rules)
+  const strength = rules.randomness / 100
+  const shiftX = between(-0.10, 0.10, random) * strength
+  const shiftY = between(-0.08, 0.08, random) * strength
   const mirror = random() < 0.5 ? -1 : 1
-  const rowCounts = heart ? [4, 6, 6, 5, 4, 3, 1] : [6, 6, 6, 6, 6, 6, 6]
-
-  rowCounts.forEach((count, row) => {
-    const rowShift = between(-0.08, 0.08, random)
+  grid.rowCounts.forEach((count, row) => {
+    const rowShift = between(-0.04, 0.04, random) * strength
     for (let col = 0; col < count; col++) {
-      const offset = heart && row === 0 ? [-2.15, -1.15, 1.15, 2.15][col] : (col - (count - 1) / 2) * 1.06
-      const x = BOARD_MAX_X / 2 + offset * mirror + shiftX + rowShift + between(-0.025, 0.025, random)
-      const y = (BOARD_MAX_Y - 6.36) / 2 + row * 1.06 + shiftY + between(-0.025, 0.025, random)
-      positions.push({ x: clamp(x, BOARD_MAX_X), y: clamp(y, BOARD_MAX_Y), layer })
+      const offset = rules.layout === 'heart' && row === 0
+        ? (col < count / 2 ? -(grid.columns - 1) / 2 + col : (grid.columns - 1) / 2 - (count - 1 - col)) * 1.06
+        : (col - (count - 1) / 2) * 1.06
+      const x = grid.maxX / 2 + offset * mirror + shiftX + rowShift + between(-0.015, 0.015, random) * strength
+      const y = (grid.maxY - (grid.rows - 1) * 1.06) / 2 + row * 1.06 + shiftY + between(-0.025, 0.025, random) * strength
+      positions.push({ x, y, layer })
     }
   })
   return shuffleArray(positions, random)
@@ -88,7 +88,7 @@ export function getRemovalOrder(cards: readonly CardPosition[], random: RandomSo
 
 // At most three types per batch: the tray never exceeds six unmatched cards.
 // Returning the removal order makes the generated solution replayable in tests.
-export function dealSolvableTypes(cards: CardItem[], types: string[], batchSets: number, random: RandomSource = Math.random): number[] {
+function dealSolvableTypes(cards: CardItem[], types: string[], batchSets: number, random: RandomSource): number[] {
   const order = getRemovalOrder(cards, random)
   const pool: string[] = []
   let typeBag: string[] = []
@@ -107,26 +107,27 @@ export function dealSolvableTypes(cards: CardItem[], types: string[], batchSets:
   return order
 }
 
-export function createLevel(level: keyof typeof LEVEL_RULES, availableTypes: string[], random: RandomSource = Math.random): { cards: CardItem[]; solution: number[] } {
-  const rules = LEVEL_RULES[level]
+export function createLevel(level: keyof typeof LEVEL_RULES, availableTypes: string[], random: RandomSource = Math.random, input: unknown = defaultGameSettings()): { cards: CardItem[]; solution: number[] } {
+  const settings = normalizeGameSettings(input)
+  const rules = settings.levels[level - 1]
   const types = shuffleArray([...new Set(availableTypes.filter(Boolean))], random).slice(0, rules.types)
   if (types.length === 0) throw new Error('至少需要一种有效卡牌才能生成关卡')
 
-  const total = Math.floor(between(rules.minSets, rules.maxSets + 1, random)) * 3
+  const total = Math.floor(between(rules.minCards / 3, rules.maxCards / 3 + 1, random)) * 3
   const positions: CardPosition[] = []
   // Upper layers have more gaps, so the opening offers several choices.
-  const weights = Array.from({ length: rules.layers }, (_, layer) => 1 - layer * 0.05)
-  const weightSum = weights.reduce((sum, weight) => sum + weight, 0)
-  const counts = weights.map(weight => Math.floor(total * weight / weightSum))
-  const remainder = total - counts.reduce((sum, count) => sum + count, 0)
+  // Equal distribution never exceeds the validated per-layer capacity.
+  const counts = Array.from({ length: rules.layers }, () => Math.floor(total / rules.layers))
+  const remainder = total % rules.layers
   for (let i = 0; i < remainder; i++) counts[i]++
 
   for (let layer = 0; layer < rules.layers; layer++) {
-    const candidates = createLayer(layer, level === 3, random)
+    const candidates = createLayer(layer, settings, rules, random)
     let selected = candidates.slice(0, counts[layer])
-    if (level === 3 && layer === 0) {
+    if (rules.layout === 'heart' && layer === 0) {
       // Preserve the two lobes, outer edges and tip of the heart.
-      const outline = candidates.filter(p => p.y < 0.4 || p.y > 6 || p.x < 0.5 || p.x > BOARD_MAX_X - 0.5)
+      const { maxX, maxY } = layoutGrid(settings, rules)
+      const outline = candidates.filter(p => p.y < 0.4 || p.y > maxY - 0.4 || p.x < 0.5 || p.x > maxX - 0.5)
       selected = [...outline, ...candidates.filter(p => !outline.includes(p))].slice(0, counts[layer])
     }
     positions.push(...selected)
@@ -139,7 +140,7 @@ export function createLevel(level: keyof typeof LEVEL_RULES, availableTypes: str
     status: 'board',
     isCovered: false
   }))
-  const solution = dealSolvableTypes(cards, types, rules.batchSets, random)
+  const solution = dealSolvableTypes(cards, types, level === 1 ? 2 : 3, random)
   updateCardCoverage(cards)
   return { cards, solution }
 }
