@@ -5,6 +5,7 @@ TARGET_DIR=${1:?Usage: install-update.sh deploy-directory update.tar.gz}
 BUNDLE=${2:?Missing update archive}
 
 mkdir -p "$TARGET_DIR"
+mkdir -p "$TARGET_DIR/data"
 TARGET_DIR=$(cd "$TARGET_DIR" && pwd -P)
 
 # 1. 独占锁防并发部署（避免并发提交相互冲突）

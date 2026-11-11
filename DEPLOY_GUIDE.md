@@ -23,6 +23,32 @@
 
 ---
 
+## 零、 自动一键部署：GitHub Actions 持续集成与发布 🚀
+
+本项目已内置自动化 CI/CD 工作流（`.github/workflows/deploy.yml`）。每次当你将代码推送到 GitHub，GitHub 就会自动在云端执行打包编译、并将轻量精简更新包通过 SSH 安全推送到你的云服务器，执行加锁原子更新与 Docker 容器热重启。
+
+### 为什么之前 Actions 显示失败？
+因为 GitHub Actions 连接并部署到你的服务器需要**在仓库中配置服务器连接凭据（Secrets）**。如果未配置，工作流就会在第 5 步（远程 SSH 部署）直接报错。
+
+### ⚙️ 如何配置 GitHub Secrets（仅需配置一次）：
+1. 访问你的 GitHub 仓库页面：
+   👉 **[https://github.com/suxinjson/yang/settings/secrets/actions](https://github.com/suxinjson/yang/settings/secrets/actions)**
+2. 点击右上角绿色的 **`New repository secret`** 按钮，分别添加以下变量：
+
+| Secret 变量名称 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| **`SERVER_HOST`**（必须） | 你的云服务器公网 IP 或解析域名 | `123.45.67.89` 或 `love.yourdomain.com` |
+| **`SERVER_USER`**（必须） | SSH 登录用户名 | `root` 或 `ubuntu` |
+| **`SERVER_SSH_KEY`**（必须） | 登录服务器的 SSH **私钥内容** | `-----BEGIN OPENSSH PRIVATE KEY----- ... -----END OPENSSH PRIVATE KEY-----` |
+| **`SERVER_PORT`**（可选） | SSH 端口，默认 22 | `22` |
+| **`SERVER_DEPLOY_PATH`**（可选） | 服务器上的部署目录，默认 `~/ganglegang` | `~/ganglegang` 或 `/var/www/ganglegang` |
+
+> 💡 **提示**：`SERVER_KNOWN_HOSTS` **已支持自动公钥扫描与安全接受**，无需手动配置！
+
+3. 配置完成后，点击 Actions 页面上的 **Re-run all jobs**，或在本地随意提交推送一次代码，工作流就会自动打通并部署成功！
+
+---
+
 ## 一、 部署到你的云服务器 🖥️
 
 ### 步骤 1：上传项目代码到服务器
