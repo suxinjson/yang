@@ -1,6 +1,10 @@
 // One set of defaults and bounds for the browser and the Node server.
 export const CARD_GEOMETRY = Object.freeze({ padding: 12, cardWidth: 54, cardHeight: 64, stepX: 58, stepY: 68 })
 
+export function normalizeCardTextMode(value) {
+  return ['none', 'name', 'description'].includes(value) ? value : 'name'
+}
+
 export function defaultGameSettings() {
   return {
     boardWidth: 420,

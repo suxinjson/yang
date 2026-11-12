@@ -3,28 +3,55 @@ set -euo pipefail
 
 echo ">>> [1/2] 重新构建并平滑启动 Docker 服务..."
 if docker compose version >/dev/null 2>&1; then
-  DOCKER_CMD="docker compose"
+  DOCKER_CMD=(docker compose)
 elif command -v docker-compose >/dev/null 2>&1; then
-  DOCKER_CMD="docker-compose"
+  DOCKER_CMD=(docker-compose)
 else
   echo "❌ 错误：服务器上未安装 Docker Compose！"
   echo "请先在服务器上安装 Docker 与 Docker Compose 插件。"
   exit 1
 fi
 
-# 检查并清理可能导致名称冲突的旧容器（如手动 docker run 或旧项目残留的容器）
-if docker ps -a --format '{{.Names}}' | grep -Eq '^ganglegang$'; then
+# 构建失败时保留运行中的旧服务；记录旧镜像以便替换失败后恢复。
+PREVIOUS_IMAGE=$(docker inspect ganglegang --format '{{.Image}}' 2>/dev/null || true)
+PREVIOUS_RUNNING=$(docker inspect ganglegang --format '{{.State.Running}}' 2>/dev/null || true)
+"${DOCKER_CMD[@]}" build
+
+connect_caddy_networks() {
+  for MEMBER_NET in $(docker inspect member-web-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
+    docker network connect --alias ganglegang "$MEMBER_NET" ganglegang 2>/dev/null || true
+  done
+}
+
+restore_on_failure() {
+  DEPLOY_STATUS=$?
+  trap - EXIT
+  if [ "$DEPLOY_STATUS" -ne 0 ] && [ -n "$PREVIOUS_IMAGE" ] && [ "$PREVIOUS_RUNNING" = "true" ]; then
+    echo "❌ 更新失败，正在恢复旧镜像..."
+    ROLLBACK_FILE=$(mktemp "$PWD/.app-rollback.XXXXXX")
+    printf 'services:\n  ganglegang:\n    image: "%s"\n' "$PREVIOUS_IMAGE" > "$ROLLBACK_FILE"
+    if "${DOCKER_CMD[@]}" -f compose.yaml -f "$ROLLBACK_FILE" up -d --no-build --remove-orphans --force-recreate; then
+      connect_caddy_networks
+      echo "已恢复旧镜像，请检查更新失败原因。"
+    else
+      echo "❌ 旧镜像恢复失败，请立即检查 Docker 日志！" >&2
+    fi
+    rm -f -- "$ROLLBACK_FILE"
+  fi
+  exit "$DEPLOY_STATUS"
+}
+trap restore_on_failure EXIT
+
+# 新镜像已构建成功后，才处理手动运行的同名容器。
+if [ -n "$PREVIOUS_IMAGE" ]; then
   echo ">>> 检测到已有同名 ganglegang 容器，正在停止并移除旧容器以释放名称..."
-  docker rm -f ganglegang 2>/dev/null || true
+  docker rm -f ganglegang
 fi
 
-$DOCKER_CMD up -d --build --remove-orphans --force-recreate
+"${DOCKER_CMD[@]}" up -d --no-build --remove-orphans --force-recreate
 
 # 自动将 ganglegang 接入 Caddy (member-web-1) 所在的 Docker 网络，确保容器间直接通过服务名通信
-for MEMBER_NET in $(docker inspect member-web-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
-  echo ">>> 正在将 ganglegang 接入 Caddy 网络 ($MEMBER_NET)..."
-  docker network connect --alias ganglegang "$MEMBER_NET" ganglegang 2>/dev/null || true
-done
+connect_caddy_networks
 
 # 自动检查并维护宿主机 Caddyfile 的 /gang 路由规则（防止被会员系统更新覆盖）
 HOST_CADDY=$(docker inspect member-web-1 --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)
@@ -74,7 +101,7 @@ done
 
 if [ "$HEALTH_READY" -ne 1 ]; then
   echo "❌ 健康检查失败，请检查 Docker 日志！"
-  $DOCKER_CMD logs --tail=50
+  "${DOCKER_CMD[@]}" logs --tail=50
   exit 1
 fi
 

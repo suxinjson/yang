@@ -4,10 +4,12 @@
 
 ---
 
+部署 2.0.0 时需同步更新 shared/、package-lock.json、server.js 和 Web 资源，使用 npm ci 安装 ws 依赖，代理支持 /api/play/socket 的 WebSocket 升级。后台独立于游戏；单人选牌本地运行，情侣棋盘由服务端统一处理。仅运行一个 Node 实例写持久化账本。详情见 [ANDROID_ONLINE.md](ANDROID_ONLINE.md)。
+
 ## 🏗️ 整体架构流程
 
 ```
-[ 你 (男朋友) ] ---> 浏览器访问 http://服务器IP:3000/?admin
+[ 你 (男朋友) ] ---> 浏览器访问 http://服务器IP:3000/admin
                       └── 独立密码解锁后台 -> 切换帅照 / 调整惩罚比例 / 增删任务
                       └── 实时同步保存到服务器 data/config.json
                                    │
@@ -98,9 +100,9 @@ server {
 部署完成后：
 1. 打开浏览器访问：
    ```text
-   http://你的服务器IP:3000/?admin
+   http://你的服务器IP:3000/admin
    # 或（绑定域名后）：
-   http://love.yourdomain.com/?admin
+   http://love.yourdomain.com/admin
    ```
 2. 输入初始管理员密码：**`admin`**
 3. 可以在后台：

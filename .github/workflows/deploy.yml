@@ -32,7 +32,7 @@ jobs:
       run: |
         mkdir -p deploy_bundle
         # 打包生产运行必需的精简产物
-        cp -r dist public shared server.js deploy Dockerfile compose.yaml package.json deploy_bundle/
+        cp -r dist public shared server.js deploy Dockerfile compose.yaml package.json package-lock.json deploy_bundle/
         tar -czf "update-bundle.tar.gz" -C deploy_bundle .
 
     - name: 5. 远程 SSH 部署到服务器

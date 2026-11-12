@@ -1,22 +1,26 @@
 import { test, expect, type Page } from '@playwright/test'
+import { createHash } from 'node:crypto'
 import { defaultGameSettings } from '../shared/gameConfig.js'
 
 async function adminFixture(page: Page) {
   let config: any = { gameSettings: defaultGameSettings() }
   let writes = 0
+  const snapshot = () => ({ epoch: 'fixture', revision: writes + 1, configVersion: createHash('sha256').update(JSON.stringify(config)).digest('hex'), config, coupons: [] })
   let rejectWrites = false
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
     if (url.pathname.endsWith('/admin/login')) {
       const success = route.request().postDataJSON().password === 'admin'
       await route.fulfill({ status: success ? 200 : 401, json: success ? { success, token: 'test-admin-session' } : { success } })
+    } else if (url.pathname.endsWith('/state')) {
+      await route.fulfill({ json: { state: snapshot() } })
     } else if (url.pathname.endsWith('/config')) {
       if (route.request().method() === 'POST') {
         writes++
         if (rejectWrites) return route.fulfill({ status: 503, json: { success: false } })
         config = route.request().postDataJSON()
       }
-      await route.fulfill({ json: config })
+      await route.fulfill({ json: { ...config, state: snapshot() } })
     } else {
       await route.fulfill({ json: [] })
     }
@@ -30,7 +34,7 @@ async function adminFixture(page: Page) {
 
 async function login(page: Page) {
   await page.getByPlaceholder('请输入管理员密码...').fill('admin')
-  await page.getByRole('button', { name: /解锁后台控制中心/ }).click()
+  await page.getByRole('button', { name: /登录后台/ }).click()
   await expect(page.getByTestId('game-settings')).toBeVisible()
 }
 
@@ -39,8 +43,7 @@ test('admin saves per-level rules, applies on restart and restores after refresh
   page.on('pageerror', error => errors.push(error.message))
   const fixture = await adminFixture(page)
   expect(fixture.getWrites()).toBe(0)
-  const before = await page.locator('.board-arena').getAttribute('style')
-  const initialCount = await page.locator('.board-arena .game-card').count()
+  await expect(page.locator('.board-arena')).toHaveCount(0)
   await login(page)
   expect(fixture.getWrites()).toBe(0)
   await page.getByLabel('棋盘宽度', { exact: true }).fill('360')
@@ -55,14 +58,17 @@ test('admin saves per-level rules, applies on restart and restores after refresh
   await page.getByRole('button', { name: '保存关卡配置', exact: true }).click()
   await expect(page.getByText('已保存并同步到服务器', { exact: true })).toBeVisible()
   expect(fixture.getConfig().gameSettings.levels[0].minCards).toBe(36)
-  await expect(page.locator('.board-arena')).toHaveAttribute('style', before!)
-  await expect(page.locator('.board-arena .game-card')).toHaveCount(initialCount)
-  await page.getByRole('button', { name: '🎲 关卡与布局' }).click()
+  await page.getByLabel('棋盘宽度', { exact: true }).fill('380')
+  await expect(page.getByText('已保存并同步到服务器', { exact: true })).toHaveCount(0)
+  await page.getByLabel('棋盘宽度', { exact: true }).fill('360')
+  await expect(page.locator('.board-arena')).toHaveCount(0)
+  await page.getByRole('button', { name: '关卡与布局', exact: true }).click()
   await page.getByLabel('棋盘宽度', { exact: true }).scrollIntoViewIfNeeded()
   await page.screenshot({ path: 'test-results/admin-game-settings.png' })
-  await page.getByRole('button', { name: '保存并退出后台' }).click()
-  await expect(page.getByTestId('game-settings')).toHaveCount(0)
-  await page.getByTitle('重新开始本关').click()
+  await page.getByRole('button', { name: '保存全部配置' }).click()
+  await expect(page.getByTestId('game-settings')).toBeVisible()
+  await page.goto('/')
+  await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
   await expect(page.locator('.board-arena .game-card')).toHaveCount(36)
   const round = await page.evaluate(() => {
     const state = (document.querySelector('#app') as any).__vue_app__._instance.setupState
@@ -74,57 +80,52 @@ test('admin saves per-level rules, applies on restart and restores after refresh
   expect(errors).toEqual([])
 })
 
-test('failed remote saves display local status and do not claim synchronization', async ({ page }) => {
+test('failed remote saves preserve the draft and do not claim synchronization', async ({ page }) => {
   const fixture = await adminFixture(page)
   await login(page)
   fixture.rejectWrites()
   await page.getByLabel('第1关最少张数', { exact: true }).fill('25')
   await page.getByLabel('第1关最多张数', { exact: true }).fill('31')
   await page.getByRole('button', { name: '保存关卡配置', exact: true }).click()
-  await expect(page.getByText(/仅保存在本机，未同步/)).toBeVisible()
+  await expect(page.getByText(/保存失败，请重试/)).toBeVisible()
   await expect(page.getByText(/已按允许范围和布局容量修正参数/)).toBeVisible()
   await expect(page.getByLabel('第1关最少张数', { exact: true })).toHaveValue('24')
   await expect(page.getByLabel('第1关最多张数', { exact: true })).toHaveValue('30')
-  await page.getByRole('button', { name: '保存并退出后台' }).click()
+  await page.getByRole('button', { name: '保存全部配置' }).click()
   await expect(page.getByTestId('game-settings')).toBeVisible()
   await expect(page.getByText('已保存并同步到服务器', { exact: true })).toHaveCount(0)
 })
 
-test('configuration changes preserve definitions of cards already in play', async ({ page }) => {
-  await adminFixture(page)
-  const before = await page.locator('.board-arena .game-card').allTextContents()
-  await page.evaluate(async () => {
-    // Exercise the same config-update event as the dashboard after replacing card types.
-    const state = (document.querySelector('#app') as any).__vue_app__._instance.setupState
-    const config = JSON.parse(localStorage.getItem('couple_game_admin_config_v3')!)
-    config.customCards = ['a', 'b', 'c'].map(id => ({ id, name: `new ${id}`, desc: '', tag: '', defaultIconSvg: '', bgColor: '#fff', borderColor: '#ddd' }))
-    localStorage.setItem('couple_game_admin_config_v3', JSON.stringify(config))
-    state.handleAdminConfigUpdated()
-  })
-  expect(await page.locator('.board-arena .game-card').allTextContents()).toEqual(before)
+test('dashboard never mounts a game or exposes player controls', async ({ page }) => {
+  await adminFixture(page); await login(page)
+  for (const name of [/卡牌种类与图片/, /心愿券设置/, /关卡与布局/]) {
+    await page.getByRole('button', { name }).click()
+    await expect(page.locator('.board-arena')).toHaveCount(0)
+    await expect(page.getByTitle('重新开始本关')).toHaveCount(0)
+  }
 })
 
-test('save and exit includes layout edits after switching tabs', async ({ page }) => {
+test('saving includes layout edits after switching tabs and stays on dashboard', async ({ page }) => {
   const fixture = await adminFixture(page)
   await login(page)
   await page.getByLabel('第1关最少张数', { exact: true }).fill('42')
   await page.getByLabel('第1关最多张数', { exact: true }).fill('42')
   await page.getByRole('button', { name: /卡牌种类与图片/ }).click()
-  await page.getByRole('button', { name: '保存并退出后台' }).click()
-  await expect(page.getByTestId('game-settings')).toHaveCount(0)
+  await page.getByRole('button', { name: '保存全部配置' }).click()
+  await expect(page.getByRole('button', { name: '保存全部配置' })).toBeVisible()
   expect(fixture.getConfig().gameSettings.levels[0].minCards).toBe(42)
-  await page.getByTitle('重新开始本关').click()
+  await page.goto('/')
   await expect(page.locator('.board-arena .game-card')).toHaveCount(42)
 })
 
-test('local storage failure is reported and prevents a false successful exit', async ({ page }) => {
+test('a full local cache does not undo a successful server save', async ({ page }) => {
   const fixture = await adminFixture(page)
   await login(page)
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error('Storage quota exceeded') } })
-  await page.getByRole('button', { name: '保存并退出后台' }).click()
-  await expect(page.getByText(/保存失败，请重试/)).toBeVisible()
+  await page.getByRole('button', { name: '保存全部配置' }).click()
+  await expect(page.getByText('已保存并同步到服务器', { exact: true })).toBeVisible()
   await expect(page.getByTestId('game-settings')).toBeVisible()
-  expect(fixture.getWrites()).toBe(0)
+  expect(fixture.getWrites()).toBe(1)
 })
 
 test('rapid saves keep the latest snapshot despite a slow first request', async ({ page }) => {
@@ -155,7 +156,7 @@ test('rapid saves keep the latest snapshot despite a slow first request', async 
 test('wrong passwords cannot unlock the dashboard through local fallback', async ({ page }) => {
   await adminFixture(page)
   await page.getByPlaceholder('请输入管理员密码...').fill('wrong')
-  await page.getByRole('button', { name: /解锁后台控制中心/ }).click()
+  await page.getByRole('button', { name: /登录后台/ }).click()
   await expect(page.getByText('密码错误，请重新输入！')).toBeVisible()
   await expect(page.getByTestId('game-settings')).toHaveCount(0)
 })
@@ -165,11 +166,8 @@ test('an empty server coupon list replaces stale local records', async ({ page }
     localStorage.setItem('couple_game_love_coupons_v2', JSON.stringify([{ id: 'stale', title: '旧记录', used: false }]))
   })
   await adminFixture(page)
-  const count = await page.evaluate(() => {
-    const state = (document.querySelector('#app') as any).__vue_app__._instance.setupState
-    return state.loveCoupons.length
-  })
-  expect(count).toBe(0)
+  await page.goto('/')
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('couple_game_love_coupons_v2') || '[]').length)).toBe(0)
 })
 
 test('malformed cached data does not prevent the game or dashboard from opening', async ({ page }) => {
@@ -181,6 +179,8 @@ test('malformed cached data does not prevent the game or dashboard from opening'
   })
   await adminFixture(page)
   await login(page)
+  await expect(page.locator('.board-arena')).toHaveCount(0)
+  await page.goto('/')
   await expect(page.locator('.board-arena .game-card').first()).toBeAttached()
   expect(errors).toEqual([])
 })

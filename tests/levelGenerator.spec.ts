@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import assert from 'node:assert/strict'
-import { createLevel, LEVEL_RULES, updateCardCoverage, checkCardOverlap } from '../src/utils/levelGenerator'
-import { BOARD_MAX_X, BOARD_MAX_Y, BOARD_LAYOUT, getBoardCardStyle } from '../src/utils/boardGeometry'
+import { createLevel, LEVEL_RULES, updateCardCoverage, checkCardOverlap } from '../shared/levelGenerator.js'
+import { BOARD_MAX_X, BOARD_MAX_Y, BOARD_LAYOUT, getBoardCardStyle } from '../shared/boardGeometry.js'
 
 function seeded(seed: number) {
   return () => {

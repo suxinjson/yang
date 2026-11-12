@@ -1,5 +1,8 @@
 import { createApp } from 'vue'
 import './style.css'
-import App from './App.vue'
+import { Capacitor } from '@capacitor/core'
 
-createApp(App).mount('#app')
+const admin = import.meta.env.MODE !== 'android' && !Capacitor.isNativePlatform() && (/(^|\/)admin\/?$/.test(location.pathname) || new URLSearchParams(location.search).has('admin'))
+// Separate entry chunks: the App never mounts or imports the administrator UI.
+const page = admin ? await import('./AdminApp.vue') : await import('./App.vue')
+createApp(page.default).mount('#app')

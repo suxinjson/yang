@@ -31,6 +31,7 @@ dist-ssr
 deploy_bundle/
 .app-deploy.lock
 .app-update.*
+.app-rollback.*
 data/*.tmp.*
 data/client-logs/
 

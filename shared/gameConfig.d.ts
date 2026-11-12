@@ -1,4 +1,6 @@
-import type { GameSettings, LevelSettings } from '../src/types/game'
+import type { CardTextMode, GameSettings, LevelSettings } from '../src/types/game'
+
+export function normalizeCardTextMode(value: unknown): CardTextMode
 
 export const CARD_GEOMETRY: Readonly<{ padding: 12; cardWidth: number; cardHeight: number; stepX: number; stepY: number }>
 export function defaultGameSettings(): GameSettings

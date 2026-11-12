@@ -3,15 +3,19 @@ import cors from 'cors'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import { defaultPublicConfig } from './shared/defaultConfig.js'
 import { fileURLToPath } from 'url'
-import { defaultGameSettings, normalizeGameSettings } from './shared/gameConfig.js'
+import { normalizeGameSettings, normalizeCardTextMode } from './shared/gameConfig.js'
 import { normalizeBoyfriendSettings } from './shared/boyfriendConfig.js'
 import { registerClientRoutes } from './shared/clientAudit.js'
+import { registerGameplay } from './shared/gameplayServer.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const app = express()
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback, linklocal, uniquelocal')
+let gameplay
 const PORT = process.env.PORT || 3000
 
 app.use(cors())
@@ -35,112 +39,7 @@ function getServerState() {
   return { epoch: syncEpoch, revision: stateRevision, configVersion: crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex'), config, coupons: loadServerCoupons() }
 }
 
-// Initial Default Config
-const DEFAULT_CONFIG = {
-  ...normalizeBoyfriendSettings({}),
-  gameSettings: defaultGameSettings(),
-  adminPassword: 'admin',
-  bfPhotoIndex: 1, // 1 to 6, 0 for random
-  couponName: '专属心愿券',
-  gfPenaltyRatio: 75,
-  summonCostEnabled: true,
-  activeCardPhotos: {
-    iron_heart: '/photos/iron_heart.jpg',
-    steel_heart: '/photos/steel_heart.jpg',
-    sock_meme: '/photos/sock_meme.png',
-    birthday_photo: '/photos/birthday_photo.jpg',
-    flower_photo: '/photos/flower_photo.jpg',
-    boyfriend_photo: '/photos/bf_1.jpg'
-  },
-  girlfriendTasks: [
-    {
-      id: 'gf_sock',
-      title: '手洗袜子券',
-      desc: '帮对方手洗袜子一次，洗完当面夸赞袜子好香！',
-      icon: '🧦',
-      target: 'girlfriend_pays'
-    },
-    {
-      id: 'gf_massage',
-      title: '捏肩伺候 15 分钟',
-      desc: '为对方进行 15 分钟全身推拿捏肩，态度端正，中途不准喊累！',
-      icon: '💆‍♂️',
-      target: 'girlfriend_pays'
-    },
-    {
-      id: 'gf_drink',
-      title: '快乐水 / 奶茶投喂',
-      desc: '向对方奉上冰阔乐或奶茶一杯，附带甜蜜微笑和双手奉上！',
-      icon: '🥤',
-      target: 'girlfriend_pays'
-    },
-    {
-      id: 'gf_brother',
-      title: '甜甜夸夸三分钟',
-      desc: '深情看着对方的眼睛，认真说出对方身上最迷人的三个优点！',
-      icon: '🤴',
-      target: 'girlfriend_pays'
-    },
-    {
-      id: 'gf_housework',
-      title: '今晚家务承包卡',
-      desc: '主动包揽今晚的洗碗、擦桌子或倒垃圾，让对方舒舒服服休息！',
-      icon: '🍽️',
-      target: 'girlfriend_pays'
-    },
-    {
-      id: 'gf_obey',
-      title: '半日听话小跟班',
-      desc: '在接下来的半天内，对对方提出的合理要求无条件配合，不得顶嘴！',
-      icon: '🫡',
-      target: 'girlfriend_pays'
-    },
-    {
-      id: 'gf_snack',
-      title: '爱心夜宵加餐券',
-      desc: '给对方准备一份惊喜小夜宵或者洗切水果，亲手投喂！',
-      icon: '🍱',
-      target: 'girlfriend_pays'
-    },
-    {
-      id: 'gf_wish',
-      title: '甜蜜心愿兑现券',
-      desc: '无论对方提出什么合理小心愿，必须无条件配合兑现！',
-      icon: '🌟',
-      target: 'girlfriend_pays'
-    }
-  ],
-  boyfriendRewards: [
-    {
-      id: 'bf_milktea',
-      title: '全糖奶茶免单券',
-      desc: '凭此券任意点一杯最爱喝的奶茶，大杯加料，甜蜜畅饮！',
-      icon: '🧋',
-      target: 'boyfriend_pays'
-    },
-    {
-      id: 'bf_forgive',
-      title: '绝不生气免死金牌',
-      desc: '拥有一次无论发生什么对方必须无条件认错并夸夸的特权！',
-      icon: '🛡️',
-      target: 'boyfriend_pays'
-    },
-    {
-      id: 'bf_dinner',
-      title: '大餐任选请客券',
-      desc: '今天吃什么由你全权做主，火锅烤肉日料随心挑选！',
-      icon: '🥩',
-      target: 'boyfriend_pays'
-    },
-    {
-      id: 'bf_massage',
-      title: '专属推拿按摩券',
-      desc: '享受专属全身推拿按摩 15 分钟，直到你满意为止！',
-      icon: '💆‍♀️',
-      target: 'boyfriend_pays'
-    }
-  ]
-}
+const DEFAULT_CONFIG = { ...defaultPublicConfig(), adminPassword: 'admin' }
 
 // Atomic write JSON helper to avoid data corruption
 function atomicWriteJson(filePath, data) {
@@ -171,6 +70,7 @@ function loadServerConfig() {
 function saveServerConfig(cfg) {
   atomicWriteJson(configFilePath, cfg)
   stateRevision++
+  gameplay?.broadcastState(getServerState())
 }
 
 function loadCouponLedger() {
@@ -208,15 +108,25 @@ function loadCouponLedger() {
       obtainedAt: '初始心愿'
     }
   ]
-  const ledger = { coupons: initCoupons, operations: {} }
+  const ledger = { coupons: initCoupons, operations: {}, transactions: initCoupons.map(coupon => ({ id: crypto.randomUUID(), at: new Date().toISOString(),
+    event: 'coupon_gain', source: 'server', deviceId: 'server_initialization', details: { couponId: coupon.id, source: 'initial_grant' } })) }
   atomicWriteJson(couponsFilePath, ledger)
   return ledger
 }
 
 function loadServerCoupons() { return loadCouponLedger().coupons }
-function saveCouponLedger(ledger) {
+let couponFingerprint
+function saveCouponLedger(ledger, notify = true) {
+  const previous = couponFingerprint ?? JSON.stringify(loadCouponLedger().coupons)
   atomicWriteJson(couponsFilePath, ledger)
-  stateRevision++
+  couponFingerprint = JSON.stringify(ledger.coupons)
+  if (previous !== couponFingerprint) {
+    stateRevision++
+    if (notify) {
+      try { gameplay?.broadcastState(getServerState()) }
+      catch (error) { console.error('Committed ledger notification failed:', error.message) }
+    }
+  }
 }
 function saveServerCoupons(list) {
   saveCouponLedger({ ...loadCouponLedger(), coupons: list })
@@ -262,8 +172,12 @@ registerClientRoutes(app, {
   getConfig: () => publicConfig(loadServerConfig()),
   getCoupons: loadServerCoupons,
   saveCoupons: saveServerCoupons,
-  getState: getServerState, getCouponLedger: loadCouponLedger, saveCouponLedger
+  getState: getServerState, getCouponLedger: loadCouponLedger, saveCouponLedger,
+  getTransactions: params => gameplay?.queryTransactions(params) || [],
+  journal: (...args) => gameplay?.journal(...args), identity: (...args) => gameplay?.identity(...args)
 })
+gameplay = registerGameplay(app, { getConfig: () => publicConfig(loadServerConfig()), getState: getServerState,
+  getLedger: loadCouponLedger, saveLedger: saveCouponLedger, requireAdminAuth })
 app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
 
 // 0. Health Check for CI/CD & Caddy probe
@@ -308,6 +222,8 @@ app.post('/api/admin/login', (req, res) => {
 // 2. Get Game / Admin Config
 function publicConfig(config) {
   const { adminPassword: _password, ...publicFields } = config
+  delete publicFields.summonCostEnabled
+  publicFields.cardTextMode = normalizeCardTextMode(publicFields.cardTextMode)
   return publicFields
 }
 
@@ -337,7 +253,11 @@ app.get('/api/config', (req, res) => {
     activeBfPhoto: cfg.bfPhotos[selectedIndex]?.image || cfg.bfPhotos[0].image
   })
 })
-app.get('/api/state', (_req, res) => res.json({ state: getServerState() }))
+app.get('/api/state', (req, res) => {
+  const etag = `"${syncEpoch}:${stateRevision}"`
+  if (req.headers['if-none-match'] === etag) return res.status(304).end()
+  res.set('ETag', etag).json({ state: getServerState() })
+})
 
 // 3. Save Admin Config (From Web Admin Panel - Protected)
 app.post('/api/config', requireAdminAuth, (req, res) => {
@@ -347,7 +267,7 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
     return res.status(400).json({ error: 'Invalid config' })
   }
   const current = loadServerConfig()
-  const allowedKeys = ['bfPhotoIndex', 'couponName', 'gfPenaltyRatio', 'summonCostEnabled', 'activeCardPhotos', 'customCards', 'girlfriendTasks', 'boyfriendRewards']
+  const allowedKeys = ['cardTextMode', 'bfPhotoIndex', 'couponName', 'gfPenaltyRatio', 'activeCardPhotos', 'customCards', 'girlfriendTasks', 'boyfriendRewards']
   const patch = Object.fromEntries(allowedKeys.filter(key => Object.hasOwn(newConfig, key)).map(key => [key, newConfig[key]]))
   if (Object.hasOwn(patch, 'customCards') && (!Array.isArray(patch.customCards) || patch.customCards.length < 3 || patch.customCards.some(card => !card || typeof card.id !== 'string' || typeof card.name !== 'string') || new Set(patch.customCards.map(card => card.id)).size !== patch.customCards.length)) {
     return res.status(400).json({ success: false, error: '至少保留三种有效且不重复的卡牌' })
@@ -363,7 +283,7 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
   if (Object.hasOwn(patch, 'bfPhotoIndex')) patch.bfPhotoIndex = typeof patch.bfPhotoIndex === 'number' && Number.isFinite(patch.bfPhotoIndex) ? Math.max(0, Math.min(6, Math.round(patch.bfPhotoIndex))) : current.bfPhotoIndex
   if (Object.hasOwn(patch, 'gfPenaltyRatio')) patch.gfPenaltyRatio = typeof patch.gfPenaltyRatio === 'number' && Number.isFinite(patch.gfPenaltyRatio) ? Math.max(0, Math.min(100, Math.round(patch.gfPenaltyRatio))) : current.gfPenaltyRatio
   if (Object.hasOwn(patch, 'couponName')) patch.couponName = typeof patch.couponName === 'string' ? patch.couponName.trim().slice(0, 30) || '专属心愿券' : current.couponName
-  if (Object.hasOwn(patch, 'summonCostEnabled') && typeof patch.summonCostEnabled !== 'boolean') patch.summonCostEnabled = current.summonCostEnabled
+  if (Object.hasOwn(patch, 'cardTextMode')) patch.cardTextMode = normalizeCardTextMode(patch.cardTextMode)
   const boyfriendPatch = Object.fromEntries(['bfPhotos', 'bfCardEnabled'].filter(key => Object.hasOwn(newConfig, key)).map(key => [key, newConfig[key]]))
   const merged = { ...current, ...patch, ...normalizeBoyfriendSettings({ ...current, ...boyfriendPatch }), gameSettings: Object.hasOwn(newConfig, 'gameSettings') ? normalizeGameSettings(newConfig.gameSettings) : current.gameSettings }
   saveServerConfig(merged)
@@ -382,21 +302,35 @@ app.post('/api/coupons', requireAdminAuth, (req, res) => {
   if (!coupon || typeof coupon.id !== 'string' || typeof coupon.title !== 'string' || typeof coupon.used !== 'boolean') {
     return res.status(400).json({ error: 'Invalid coupon' })
   }
-  const list = loadServerCoupons()
+  const ledger = loadCouponLedger(), list = ledger.coupons
   const existing = list.find(item => item.id === coupon.id)
   if (existing) return res.json({ success: true, list, state: getServerState() })
+  const receipt = `legacy_grant_${coupon.id}`
+  if (ledger.operations[receipt]) return res.status(409).json({ error: '该发券请求已处理或已作废，请使用新的券编号', state: getServerState() })
   list.unshift(coupon)
-  saveServerCoupons(list)
+  ledger.operations[receipt] = { at: new Date().toISOString() }
+  ledger.coupons = list; ledger.transactions ||= []
+  gameplay.journal(ledger, 'coupon_gain', { ...gameplay.identity(req, req.body), source: 'admin_web' }, { couponId: coupon.id, source: 'admin_grant' })
+  saveCouponLedger(ledger)
   res.json({ success: true, list, state: getServerState() })
 })
 
 // 6. Redeem / Mark Coupon Used
 app.post('/api/coupons/redeem', (req, res) => {
-  const { id } = req.body
+  const { id, requireUnused } = req.body
   const list = loadServerCoupons()
   const target = list.find(c => c.id === id)
   if (target) {
-    if (!target.used) { target.used = true; saveServerCoupons(list) }
+    if (requireUnused === true && target.used) return res.status(409).json({ success: false, error: 'Coupon already redeemed', state: getServerState() })
+    if (!target.used) {
+      target.used = true
+      target.usedAt = new Date().toISOString()
+      const ledger = loadCouponLedger()
+      ledger.coupons = list
+      ledger.transactions ||= []
+      gameplay.journal(ledger, 'coupon_use', gameplay.identity(req, req.body), { couponId: id, purpose: 'redeem' })
+      saveCouponLedger(ledger)
+    }
     return res.json({ success: true, list, state: getServerState() })
   }
   res.status(404).json({ error: 'Coupon not found' })
@@ -404,7 +338,10 @@ app.post('/api/coupons/redeem', (req, res) => {
 
 // 7. Clear All Coupons (Admin only - Protected)
 app.post('/api/coupons/reset', requireAdminAuth, (req, res) => {
-  saveServerCoupons([])
+  const ledger = loadCouponLedger()
+  ledger.coupons = []; ledger.transactions ||= []
+  gameplay.journal(ledger, 'coupon_reset', { ...gameplay.identity(req, req.body), source: 'admin_web' })
+  saveCouponLedger(ledger)
   res.json({ success: true, list: [], state: getServerState() })
 })
 
@@ -467,6 +404,7 @@ const persistentPhotosDir = path.join(dataDir, 'photos')
 if (!fs.existsSync(persistentPhotosDir)) {
   fs.mkdirSync(persistentPhotosDir, { recursive: true })
 }
+app.get(/^\/admin\/$/, (_req, res) => res.redirect(308, '../admin'))
 app.use('/photos', express.static(persistentPhotosDir))
 app.use(express.static(publicDir))
 if (fs.existsSync(distDir)) {
@@ -485,9 +423,11 @@ app.use((req, res) => {
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   if (process.send) process.send({ port: server.address().port })
-  console.log(`\n==================================================`)
-  console.log(`🚀 《钢了钢》服务已在服务器启动！`)
-  console.log(`📱 女朋友安卓端访问: http://0.0.0.0:${PORT}/`)
-  console.log(`💻 你的独立管理后台: http://0.0.0.0:${PORT}/?admin`)
-  console.log(`==================================================\n`)
+  console.log(`钢了钢服务已启动，端口 ${PORT}，管理后台 /admin`)
+})
+gameplay.attach(server)
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
+  try { gameplay.flush() } catch (error) { console.error('Room checkpoint failed', error.message) }
+  server.close(() => process.exit(0))
+  setTimeout(() => process.exit(0), 2000).unref()
 })

@@ -1,31 +1,38 @@
 @import "tailwindcss";
 
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color-scheme: light;
-}
-
-body {
-  margin: 0;
-  padding: 0;
-  width: 100vw;
-  min-height: 100vh;
-  background-color: #FFF0F5;
-  user-select: none;
-  -webkit-user-select: none;
+  color: #493e43;
+  background: #f7f1f1;
+  font-synthesis: none;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
 }
-
-/* Custom Scrollbar for cute aesthetic */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #f472b6;
-  border-radius: 4px;
-}
+body { margin: 0; min-width: 280px; min-height: 100svh; }
+#app { min-height: 100svh; width: 100%; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; touch-action: manipulation; }
+button:disabled { cursor: default; }
+button:focus-visible, [role="button"]:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #a65e7a; outline-offset: 3px; }
+input, select, textarea { min-width: 0; }
+button, [role="button"] { transition: background-color .15s, opacity .15s, transform .15s; }
+button:active:not(:disabled) { transform: translateY(1px); }
+.game-button { min-height: 44px; padding: 11px 16px; border: 1px solid #985267; border-radius: 13px; background: #985267; color: white; font-size: 13px; font-weight: 650; text-align: center; }
+.game-button.secondary { color: #805361; border-color: #ecdee2; background: #f6edef; }
+.game-button:disabled { opacity: .45; }
+.dialog-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: #30222a70; backdrop-filter: blur(5px); }
+.game-dialog { width: 100%; max-width: 390px; max-height: 88svh; overflow-y: auto; padding: 24px; border: 1px solid #ffffffab; border-radius: 26px; background: #fffdfb; box-shadow: 0 24px 100px #30222a30; animation: dialog-in .18s ease-out; outline: 0; }
+.dialog-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px; }
+.dialog-header h2 { margin: 0; font-size: 17px; font-weight: 700; color: #6a424f; }
+.dialog-close { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: #f4eded; color: #947d84; font-size: 22px; }
+.dialog-actions { display: flex; flex-direction: column; gap: 9px; }
+.dialog-notice { padding: 12px; margin-bottom: 12px; border-radius: 12px; background: #fff4e5; color: #956f35; font-size: 12px; line-height: 1.6; }
+.operation-overlay { position: fixed; inset: 0; z-index: 20000; display: grid; place-items: center; cursor: wait; }
+.busy-spinner { width: 24px; height: 24px; border: 2px solid #ead6de; border-top-color: #985267; border-radius: 50%; animation: spin .7s linear infinite; background: #fff8; box-shadow: 0 0 0 10px #ffffffd9; }
+.fade-enter-active, .fade-leave-active { transition: opacity .15s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: #d4bcc5; border-radius: 4px; }

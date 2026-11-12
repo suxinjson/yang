@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
-import { createLevel } from '../src/utils/levelGenerator'
+import { createLevel } from '../shared/levelGenerator.js'
+import { normalizeGameSettings } from '../shared/gameConfig.js'
 
 const types = ['iron_heart', 'steel_heart', 'sock_meme', 'birthday_photo', 'flower_photo', 'boyfriend_photo', 'boba_tea', 'hug_kiss', 'gold_card']
 
@@ -21,6 +22,7 @@ async function openGame(page: Page) {
   await page.route('**/photos/**', route => route.abort())
   await page.goto('/')
   await expect(page.locator('.board-arena .game-card').first()).toBeVisible()
+  await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
   await page.evaluate(() => {
     const state = (document.querySelector('#app') as any).__vue_app__._instance.setupState
     state.soundEnabled = false
@@ -93,31 +95,52 @@ test('complete all three levels through actual card clicks', async ({ page }) =>
   expect(errors).toEqual([])
 })
 
-test('move out, undo and restart during elimination preserve card state', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 950 })
+test('removed duplicate powers stay absent and restart cancels an old elimination', async ({ page }) => {
   await openGame(page)
   await page.clock.install()
-  await loadLevel(page, 1)
-  const initial = await page.locator('.board-arena .game-card').count()
-  await page.locator('.board-arena .is-clickable').first().click()
-  await page.getByRole('button', { name: /移出3张/ }).click()
-  await expect(page.locator('.staged-area .game-card')).toHaveCount(1)
-  await expect(page.getByRole('button', { name: /后悔撤回/ })).toBeEnabled()
-  await page.getByRole('button', { name: /后悔撤回/ }).click()
-  await expect(page.locator('.board-arena .game-card')).toHaveCount(initial)
-  await expect(page.locator('.staged-area')).toHaveCount(0)
-
+  await expect(page.getByRole('button', { name: /移出3张|后悔撤回|洗牌重组/ })).toHaveCount(0)
   const { cards, solution } = await loadLevel(page, 1, 9)
   for (const index of solution) {
     await page.locator(`.board-arena [data-card-id="${cards[index].id}"]`).click()
     if (await page.locator('.is-eliminating').count()) break
   }
-  await expect(page.getByRole('button', { name: /洗牌重组/ })).toBeDisabled()
-  await expect(page.getByRole('button', { name: /移出3张/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /透视提示/ })).toBeDisabled()
   await page.getByTitle('重新开始本关').click()
   const restarted = await page.locator('.board-arena .game-card').count()
   await page.clock.runFor(1000)
   await expect(page.locator('.board-arena .game-card')).toHaveCount(restarted)
   await expect(page.locator('.slot-container .game-card')).toHaveCount(0)
   await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
+})
+
+test('each extra slot requires another full match target', async ({ page }) => {
+  await openGame(page)
+  await page.clock.install()
+  const settings = normalizeGameSettings({ initialSlots: 4, maxSlots: 7, slotUnlockCondition: 'match_count', slotUnlockMatchCount: 3,
+    levels: [{ minCards: 30, maxCards: 30, types: 1 }] })
+  const { cards, solution } = createLevel(1, ['iron_heart'], seeded(42), settings)
+  await page.evaluate(({ cards, settings }) => {
+    const state = (document.querySelector('#app') as any).__vue_app__._instance.setupState
+    state.allCards = cards
+    state.activeGameSettings = settings
+    state.unlockedSlots = 4
+    state.matchCountThisRound = 0
+    localStorage.setItem('couple_game_admin_config_v3', JSON.stringify({ gameSettings: settings }))
+  }, { cards, settings })
+  for (let pick = 0; pick < 27; pick++) {
+    await page.locator(`.board-arena [data-card-id="${cards[solution[pick]].id}"]`).click()
+    await page.clock.runFor(260)
+    if ((pick + 1) % 3 === 0) {
+      const matches = (pick + 1) / 3
+      const state = await page.evaluate(() => {
+        const state = (document.querySelector('#app') as any).__vue_app__._instance.setupState
+        return { slots: state.unlockedSlots, progress: state.slotUnlockProgress.current }
+      })
+      expect(state.slots).toBe(4 + Math.floor(matches / 3))
+      expect(state.progress).toBe(matches % 3)
+    }
+  }
+  await page.getByTitle('重新开始本关').click()
+  await expect(page.locator('.main-tray .in-slot')).toHaveCount(0)
+  await expect(page.locator('.main-tray .locked-slot')).toHaveCount(3)
 })

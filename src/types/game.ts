@@ -15,10 +15,11 @@ export interface CardDefinition {
   defaultIconSvg: string
   customImage?: string // Base64 or uploaded URL
   staticImage?: string // Preset local static file in public/photos/
-  tag: string
   bgColor: string
   borderColor: string
 }
+
+export type CardTextMode = 'none' | 'name' | 'description'
 
 export type CouponTarget = 'girlfriend_pays' | 'boyfriend_pays' // 趣味互动任务 vs 甜蜜特权礼券
 
@@ -70,13 +71,13 @@ export interface GameSettings {
 }
 
 export interface AdminConfig {
+  cardTextMode: CardTextMode
   bfPhotos: BoyfriendPhoto[]
   bfCardEnabled: boolean
   gameSettings: GameSettings
   bfPhotoIndex: number // 1 to 6, or 0 for random
   couponName: string // Configurable name for coupons displayed to user (default: '专属心愿券')
   gfPenaltyRatio: number // 0 to 100 (percentage of girlfriend tasks vs boyfriend tasks)
-  summonCostEnabled: boolean // Whether summoning boyfriend gives a coupon
   activeCardPhotos: Record<string, string> // cardId -> photo path or base64
   customCards?: CardDefinition[] // Dynamic card definitions (add, delete, rename, change image)
   girlfriendTasks: TaskItem[] // Customizable GF penalties / tasks

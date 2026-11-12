@@ -1,80 +1,20 @@
 <template>
-  <div class="props-bar w-full max-w-[420px] mx-auto px-3 mt-3 flex items-center justify-between gap-2 select-none">
-    <!-- 1. 移出 (铁了心救你) -->
-    <button
-      class="prop-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-white/95 border-2 border-pink-200 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-      :disabled="disabled || moveOutCount <= 0 || slotCount === 0"
-      @click="$emit('use-move-out')"
-    >
-      <div class="text-xl mb-0.5">🔩</div>
-      <div class="text-[11px] font-bold text-gray-800">移出3张</div>
-      <div class="text-[9px] font-medium text-pink-500">剩余 {{ moveOutCount }} 次</div>
+  <div class="props-bar grid w-full grid-cols-2 gap-2">
+    <button class="power-button" title="标亮优先可选牌" :disabled="disabled || hintCount <= 0 || !canHint" @click="$emit('hint')">
+      <span aria-hidden="true">💡</span><span>透视提示</span><small>剩 {{ hintCount }} 次</small>
     </button>
-
-    <!-- 2. 撤回 (钢了心后悔) -->
-    <button
-      class="prop-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-white/95 border-2 border-sky-200 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-      :disabled="disabled || undoCount <= 0 || !canUndo"
-      @click="$emit('use-undo')"
-    >
-      <div class="text-xl mb-0.5">🛡️</div>
-      <div class="text-[11px] font-bold text-gray-800">后悔撤回</div>
-      <div class="text-[9px] font-medium text-sky-500">剩余 {{ undoCount }} 次</div>
-    </button>
-
-    <!-- 3. 洗牌 (魔力打乱) -->
-    <button
-      class="prop-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-white/95 border-2 border-amber-200 shadow-sm active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none"
-      :disabled="disabled || shuffleCount <= 0"
-      @click="$emit('use-shuffle')"
-    >
-      <div class="text-xl mb-0.5">🔀</div>
-      <div class="text-[11px] font-bold text-gray-800">洗牌重组</div>
-      <div class="text-[9px] font-medium text-amber-500">剩余 {{ shuffleCount }} 次</div>
-    </button>
-
-    <!-- 4. 终极外援：召唤男朋友 (超醒目超级大招) -->
-    <button
-      class="prop-btn rescue-btn flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-md shadow-pink-200 border-2 border-rose-300 active:scale-95 transition-all relative overflow-hidden"
-      :class="{ 'animate-bounce shadow-rose-400 shadow-lg': isUrgent }"
-      :disabled="disabled"
-      @click="$emit('summon-boyfriend')"
-    >
-      <div class="absolute -top-1 -right-1 bg-yellow-400 text-red-700 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full">
-        必杀
-      </div>
-      <div class="text-xl mb-0.5 animate-pulse">🦸‍♂️❤️</div>
-      <div class="text-[11px] font-black text-white tracking-tight">召唤男友</div>
-      <div class="text-[9px] font-bold text-yellow-200">一键解围</div>
+    <button class="power-button rescue-button" title="暂存最多三张卡槽牌" :disabled="disabled || rescueCount <= 0 || !canRescue" @click="$emit('rescue')">
+      <span aria-hidden="true">🦸‍♂️</span><span>{{ couple ? '默契救场' : '应急救场' }}</span><small>剩 {{ rescueCount }} 次</small>
     </button>
   </div>
 </template>
-
 <script setup lang="ts">
-defineProps<{
-  moveOutCount: number
-  undoCount: number
-  shuffleCount: number
-  slotCount: number
-  isUrgent: boolean
-  disabled: boolean
-  canUndo: boolean
-}>()
-
-defineEmits<{
-  (e: 'use-move-out'): void
-  (e: 'use-undo'): void
-  (e: 'use-shuffle'): void
-  (e: 'summon-boyfriend'): void
-}>()
+defineProps<{ hintCount: number; rescueCount: number; canHint: boolean; canRescue: boolean; disabled: boolean; couple: boolean }>()
+defineEmits<{ (e: 'hint'): void; (e: 'rescue'): void }>()
 </script>
-
 <style scoped>
-.prop-btn {
-  touch-action: manipulation;
-}
-
-.rescue-btn {
-  background: linear-gradient(135deg, #FF416C, #FF4B2B);
-}
+.power-button { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 10px 8px; border: 1px solid #ead8cd; border-radius: 16px; color: #6b5140; background: #fffaf1; font-size: 12px; font-weight: 650; }
+.power-button small { font-size: 10px; font-weight: 400; opacity: .7; }
+.rescue-button { background: #985267; color: #fff; border-color: #985267; }
+.power-button:disabled { opacity: .4; }
 </style>

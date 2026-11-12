@@ -1,100 +1,23 @@
 <template>
-  <Teleport to="body">
-    <div class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-950/75 backdrop-blur-sm animate-fade-in font-sans">
-      <div class="w-full max-w-[340px] bg-gradient-to-b from-rose-50 via-white to-pink-50 rounded-3xl p-5 shadow-2xl border-4 border-rose-300 relative text-center transform scale-100 transition-all">
-        <!-- Top Floating Badge -->
-        <div class="absolute -top-5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-rose-500 to-pink-500 text-white font-black text-xs px-4 py-1.5 rounded-full shadow-md flex items-center gap-1 border-2 border-white">
-          <span>🦸‍♂️</span>
-          <span>超帅男友来救场啦！</span>
-        </div>
-
-        <!-- Boyfriend Avatar / Photo -->
-        <div class="w-24 h-24 mx-auto mt-3 mb-2.5 rounded-full border-4 border-rose-400 p-1 bg-white shadow-lg overflow-hidden relative group">
-          <template v-if="customPhoto && !imageFailed">
-            <img :src="resolveAssetUrl(customPhoto)" :alt="photoName || '男友帅照'" class="w-full h-full object-cover rounded-full" @error="imageFailed = true" />
-          </template>
-          <template v-else>
-            <div class="w-full h-full rounded-full bg-rose-100 flex items-center justify-center text-4xl">
-              🕶️
-            </div>
-          </template>
-          <div class="absolute bottom-0 right-0 bg-yellow-400 rounded-full p-1 text-xs">
-            💖
-          </div>
-        </div>
-
-        <p class="text-sm font-black text-sky-800 mb-2" data-testid="rescue-photo-name">{{ photoName || '我的帅照' }}</p>
-
-        <!-- Sweet Dialog -->
-        <h3 class="text-base font-black text-gray-800 mb-0.5">
-          “别慌，有超帅男友在！”
-        </h3>
-        
-        <p class="text-[11px] text-rose-500 font-bold mb-2.5">
-          —— 铁了心爱你 · 钢了心宠你 ——
-        </p>
-
-        <!-- Rescue Effect -->
-        <div class="bg-white/90 rounded-2xl p-2.5 text-left mb-2.5 border border-rose-200 text-xs text-gray-700 shadow-2xs">
-          <p class="flex items-center gap-1.5 font-bold text-gray-800 text-[11px]">
-            <span class="text-rose-500">✨</span>
-            <span>已施展魔力，移走 3 张难缠卡牌！</span>
-          </p>
-        </div>
-
-        <!-- Bonus Wish Condition -->
-        <div v-if="penaltyCoupon" class="bg-rose-50 rounded-2xl p-3 text-left mb-4 border-2 border-dashed border-rose-300">
-          <div class="flex items-center gap-1.5 mb-1 text-[11px] font-black text-rose-900">
-            <span>{{ penaltyCoupon.icon }}</span>
-            <span>获得{{ couponName || '心愿' }}：{{ penaltyCoupon.title }}</span>
-          </div>
-          <p class="text-[11px] text-rose-800 leading-snug">
-            {{ penaltyCoupon.desc }}
-          </p>
-          <div class="text-[9px] text-rose-600 mt-1 font-medium">
-            💡 已自动写入你的{{ couponName || '心愿' }}存折，随时可以出示兑现哦~
-          </div>
-        </div>
-
-        <!-- Accept Button -->
-        <button
-          class="w-full py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-extrabold text-sm shadow-lg shadow-rose-300 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-          @click="$emit('close')"
-        >
-          <span>收下{{ couponName || '心愿' }}！谢谢超帅男友~</span>
-          <span>🚀</span>
-        </button>
-      </div>
+  <GameDialog title="救场成功">
+    <div class="rescue-profile">
+      <img v-if="customPhoto && !imageFailed" :src="resolveAssetUrl(customPhoto)" :alt="photoName || '男友帅照'" @error="imageFailed = true" />
+      <span v-else class="text-5xl" aria-hidden="true">🕶️</span>
     </div>
-  </Teleport>
+    <p class="text-center text-base font-semibold" data-testid="rescue-photo-name">{{ photoName || '男友帅照' }}</p>
+    <p class="mt-2 mb-6 text-center text-xs text-stone-500">{{ stagedCount }} 张牌已暂存</p>
+    <button class="game-button w-full" @click="$emit('close')">{{ couple ? '继续一起闯关' : '继续闯关' }}</button>
+  </GameDialog>
 </template>
-
 <script setup lang="ts">
-import type { LoveCoupon } from '../types/game'
 import { ref } from 'vue'
+import GameDialog from './GameDialog.vue'
 import { resolveAssetUrl } from '../utils/api'
-
-defineProps<{
-  customPhoto?: string
-  photoName?: string
-  penaltyCoupon?: LoveCoupon
-  couponName?: string
-}>()
-
+defineProps<{ customPhoto?: string; photoName?: string; stagedCount: number; couple: boolean }>()
+defineEmits<{ (e: 'close'): void }>()
 const imageFailed = ref(false)
-
-defineEmits<{
-  (e: 'close'): void
-}>()
 </script>
-
 <style scoped>
-@keyframes fade-in {
-  from { opacity: 0; transform: scale(0.92); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.animate-fade-in {
-  animation: fade-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-}
+.rescue-profile { width: 104px; height: 104px; display: grid; place-items: center; border-radius: 28px; overflow: hidden; margin: 8px auto 16px; background: #f5e7ec; }
+.rescue-profile img { width: 100%; height: 100%; object-fit: cover; }
 </style>

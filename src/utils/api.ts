@@ -1,6 +1,5 @@
-import type { AdminConfig, LoveCoupon } from '../types/game'
+import type { AdminConfig } from '../types/game'
 import { Capacitor } from '@capacitor/core'
-import { clientFetch } from './clientSession'
 import { acceptServerState } from './serverState'
 
 const STORAGE_API_KEY = 'ganglegang_api_url'
@@ -43,15 +42,6 @@ export function getBaseUrl(): string {
   return isGangSubpath ? `${origin}/gang` : origin
 }
 
-export function setCustomBaseUrl(url: string) {
-  if (typeof window === 'undefined') return
-  if (url) {
-    localStorage.setItem(STORAGE_API_KEY, url.trim().replace(/\/+$/, ''))
-  } else {
-    localStorage.removeItem(STORAGE_API_KEY)
-  }
-}
-
 export function getAdminToken(): string | null {
   if (typeof window === 'undefined') return null
   return localStorage.getItem(TOKEN_KEY)
@@ -80,7 +70,7 @@ function getAuthHeaders(): Record<string, string> {
 export async function apiLogin(password: string): Promise<boolean> {
   const baseUrl = getBaseUrl()
   try {
-    const res = await clientFetch(`${baseUrl}/api/admin/login`, {
+    const res = await fetch(`${baseUrl}/api/admin/login`, {
       method: 'POST',
       signal: AbortSignal.timeout(8000),
       headers: { 'Content-Type': 'application/json' },
@@ -98,23 +88,10 @@ export async function apiLogin(password: string): Promise<boolean> {
   }
 }
 
-export async function apiFetchConfig(): Promise<AdminConfig | null> {
-  const baseUrl = getBaseUrl()
-  try {
-    const res = await clientFetch(`${baseUrl}/api/config`, { signal: AbortSignal.timeout(8000) })
-    if (res.ok) {
-      return await res.json()
-    }
-  } catch (e) {
-    console.warn('Failed to fetch config from server, using local fallback', e)
-  }
-  return null
-}
-
 export async function apiSaveConfig(config: AdminConfig, expectedVersion?: string, onSavedVersion?: (version: string) => void): Promise<boolean> {
   const baseUrl = getBaseUrl()
   try {
-    const res = await clientFetch(`${baseUrl}/api/config`, {
+    const res = await fetch(`${baseUrl}/api/config`, {
       method: 'POST',
       headers: { ...getAuthHeaders(), ...(expectedVersion ? { 'If-Match': expectedVersion } : {}) },
       body: JSON.stringify(config),
@@ -133,7 +110,7 @@ export async function apiSaveConfig(config: AdminConfig, expectedVersion?: strin
 
 export async function apiChangePassword(password: string): Promise<boolean> {
   try {
-    const res = await clientFetch(`${getBaseUrl()}/api/admin/password`, {
+    const res = await fetch(`${getBaseUrl()}/api/admin/password`, {
       method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ password }), signal: AbortSignal.timeout(8000)
     })
     if (!res.ok) return false
@@ -145,58 +122,10 @@ export async function apiChangePassword(password: string): Promise<boolean> {
   }
 }
 
-export async function apiFetchCoupons(): Promise<LoveCoupon[] | null> {
-  const baseUrl = getBaseUrl()
-  try {
-    const res = await clientFetch(`${baseUrl}/api/coupons`, { signal: AbortSignal.timeout(8000) })
-    if (res.ok) {
-      const data = await res.json()
-      return Array.isArray(data) ? data : null
-    }
-  } catch (e) {
-    console.warn('Failed to fetch coupons from server', e)
-  }
-  return null
-}
-
-export async function apiAddCoupon(coupon: LoveCoupon): Promise<boolean> {
-  const baseUrl = getBaseUrl()
-  try {
-    const res = await clientFetch(`${baseUrl}/api/coupons`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(coupon),
-      signal: AbortSignal.timeout(8000)
-    })
-    return res.ok
-  } catch (e) {
-    console.warn('Failed to post coupon to server', e)
-    return false
-  }
-}
-
-export async function apiRedeemCoupon(id: string): Promise<boolean> {
-  const baseUrl = getBaseUrl()
-  try {
-    const res = await clientFetch(`${baseUrl}/api/coupons/redeem`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-      signal: AbortSignal.timeout(8000)
-    })
-    const data = await res.json()
-    if (data.state) acceptServerState(data.state)
-    return res.ok && data.success === true
-  } catch (e) {
-    console.warn('Failed to redeem coupon on server', e)
-    return false
-  }
-}
-
 export async function apiResetCoupons(): Promise<boolean> {
   const baseUrl = getBaseUrl()
   try {
-    const res = await clientFetch(`${baseUrl}/api/coupons/reset`, {
+    const res = await fetch(`${baseUrl}/api/coupons/reset`, {
       method: 'POST',
       headers: getAuthHeaders(),
       signal: AbortSignal.timeout(8000)
@@ -208,24 +137,4 @@ export async function apiResetCoupons(): Promise<boolean> {
     console.warn('Failed to reset coupons on server', e)
     return false
   }
-}
-
-export async function apiUploadPhoto(cardId: string, base64: string): Promise<string | null> {
-  const baseUrl = getBaseUrl()
-  try {
-    const res = await clientFetch(`${baseUrl}/api/upload`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ cardId, base64 }),
-      signal: AbortSignal.timeout(8000)
-    })
-    const data = await res.json()
-    if (data.state) acceptServerState(data.state)
-    if (data.success && data.path) {
-      return data.path
-    }
-  } catch (e) {
-    console.warn('Failed to upload photo to server', e)
-  }
-  return null
 }

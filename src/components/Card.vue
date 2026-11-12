@@ -10,7 +10,13 @@
       'is-eliminating': isEliminating
     }"
     :style="cardStyle"
+    :aria-label="def?.name || '卡牌'"
+    :role="card.status === 'board' ? 'button' : undefined"
+    :tabindex="card.status === 'board' && !card.isCovered ? 0 : undefined"
+    :aria-disabled="card.status === 'board' ? card.isCovered : undefined"
     @click="handleClick"
+    @keydown.enter.prevent="handleClick"
+    @keydown.space.prevent="handleClick"
   >
     <!-- 3D Card Edge & Shadow -->
     <div 
@@ -21,7 +27,7 @@
       }"
     >
       <!-- Icon or Custom Photo -->
-      <div class="card-media-box flex-1 w-full flex items-center justify-center overflow-hidden my-0.5 relative rounded-lg">
+      <div class="card-media-box flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden relative rounded-lg">
         <template v-if="displayImage && !imageFailed">
           <img
             :src="displayImage"
@@ -39,10 +45,11 @@
       </div>
 
       <!-- Card Title -->
-      <div class="w-full text-center truncate pb-0.5">
-        <span class="text-[11px] font-extrabold text-gray-800 tracking-tight leading-none block truncate">
+      <div v-if="textMode !== 'none'" class="card-copy w-full text-center shrink-0">
+        <span class="card-name font-bold text-gray-800 block truncate">
           {{ def?.name || '卡牌' }}
         </span>
+        <span v-if="textMode === 'description' && def?.desc" class="card-description block truncate text-gray-500">{{ def.desc }}</span>
       </div>
     </div>
 
@@ -56,17 +63,18 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { CardItem, CardDefinition } from '../types/game'
+import type { CardItem, CardDefinition, CardTextMode } from '../types/game'
 import { sound } from '../utils/sound'
 import { resolveAssetUrl } from '../utils/api'
-import { getBoardCardStyle, type BOARD_LAYOUT } from '../utils/boardGeometry'
+import { getBoardCardStyle, type BoardLayout } from '../../shared/boardGeometry.js'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   card: CardItem
   def?: CardDefinition
   isEliminating?: boolean
-  boardLayout?: typeof BOARD_LAYOUT
-}>()
+  boardLayout?: BoardLayout
+  textMode?: CardTextMode
+}>(), { textMode: 'name' })
 
 const emit = defineEmits<{
   (e: 'click-card', card: CardItem): void
@@ -94,7 +102,7 @@ const cardStyle = computed(() => {
   // Inside Slot or Staged
   return {
     width: '100%',
-    maxWidth: '46px',
+    maxWidth: '54px',
     height: '56px',
     position: 'relative' as const,
     zIndex: 5,
@@ -135,6 +143,11 @@ function handleClick() {
   border-style: solid;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.16), 0 2px 4px -2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
+
+.card-name { font-size: clamp(8px, 2.5vw, 11px); line-height: 1.25; }
+.card-description { font-size: 8px; line-height: 1.2; }
+.card-copy { padding-top: 2px; }
+.card-media-box :deep(svg) { width: 100%; height: 100%; }
 
 .is-covered .card-inner {
   filter: brightness(0.65) grayscale(0.28);

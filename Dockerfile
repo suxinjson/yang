@@ -3,8 +3,8 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install production dependencies
-COPY package.json ./
-RUN npm install --omit=dev express cors
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 # Copy built frontend, static assets, and backend server
 COPY dist ./dist
