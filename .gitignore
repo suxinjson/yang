@@ -34,6 +34,9 @@ deploy_bundle/
 .app-rollback.*
 data/*.tmp.*
 data/client-logs/
+data/backups/
+.env
+.env.postgres
 
 # Android build artifacts
 android/app/build/

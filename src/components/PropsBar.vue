@@ -1,10 +1,10 @@
 <template>
   <div class="props-bar grid w-full grid-cols-2 gap-2">
     <button class="power-button" title="标亮优先可选牌" :disabled="disabled || hintCount <= 0 || !canHint" @click="$emit('hint')">
-      <span aria-hidden="true">💡</span><span>透视提示</span><small>剩 {{ hintCount }} 次</small>
+      <span aria-hidden="true">💡</span><span>透视卡</span><small>剩 {{ hintCount }} 次</small>
     </button>
     <button class="power-button rescue-button" title="暂存最多三张卡槽牌" :disabled="disabled || rescueCount <= 0 || !canRescue" @click="$emit('rescue')">
-      <span aria-hidden="true">🦸‍♂️</span><span>{{ couple ? '默契救场' : '应急救场' }}</span><small>剩 {{ rescueCount }} 次</small>
+      <span aria-hidden="true">🦸‍♂️</span><span>召唤男友卡</span><small>剩 {{ rescueCount }} 次</small>
     </button>
   </div>
 </template>

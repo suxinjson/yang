@@ -3,6 +3,8 @@ import { apiSaveConfig } from './api'
 import { normalizeGameSettings, normalizeCardTextMode } from '../../shared/gameConfig.js'
 import { normalizeBoyfriendSettings } from '../../shared/boyfriendConfig.js'
 import { defaultPublicConfig } from '../../shared/defaultConfig.js'
+import { normalizeRewardPolicy } from '../../shared/rewardConfig.js'
+import { normalizeCardCatalog } from '../../shared/cardGroups.js'
 import { serverState } from './serverState'
 
 const ADMIN_STORAGE_KEY = 'couple_game_admin_config_v3'
@@ -29,14 +31,15 @@ export function normalizeAdminConfig(input: unknown): AdminConfig {
     : structuredClone(fallback)
   const cards = Array.isArray(parsed.customCards) ? [...new Map(parsed.customCards.filter(card => card && typeof card.id === 'string' && card.id && typeof card.name === 'string').map(card => [card.id, { ...card }])).values()] : []
   return {
+    ...normalizeCardCatalog({ ...parsed, customCards: cards.length >= 3 ? cards : undefined }),
+    rewardPolicy: normalizeRewardPolicy(parsed.rewardPolicy),
     cardTextMode: normalizeCardTextMode(parsed.cardTextMode),
     ...normalizeBoyfriendSettings(parsed),
     gameSettings: normalizeGameSettings(parsed.gameSettings),
     bfPhotoIndex: typeof parsed.bfPhotoIndex === 'number' && Number.isFinite(parsed.bfPhotoIndex) ? Math.max(0, Math.min(6, Math.round(parsed.bfPhotoIndex))) : 1,
     couponName: typeof parsed.couponName === 'string' ? parsed.couponName.trim().slice(0, 30) || '专属心愿券' : '专属心愿券',
-    gfPenaltyRatio: typeof parsed.gfPenaltyRatio === 'number' && Number.isFinite(parsed.gfPenaltyRatio) ? Math.max(0, Math.min(100, Math.round(parsed.gfPenaltyRatio))) : 75,
+    gfPenaltyRatio: typeof parsed.gfPenaltyRatio === 'number' && Number.isFinite(parsed.gfPenaltyRatio) ? Math.max(0, Math.min(100, Math.round(parsed.gfPenaltyRatio))) : DEFAULT_ADMIN_CONFIG.gfPenaltyRatio,
     activeCardPhotos: { ...DEFAULT_ADMIN_CONFIG.activeCardPhotos, ...(parsed.activeCardPhotos && typeof parsed.activeCardPhotos === 'object' && !Array.isArray(parsed.activeCardPhotos) ? parsed.activeCardPhotos : {}) },
-    customCards: cards.length >= 3 ? cards : undefined,
     girlfriendTasks: tasks(parsed.girlfriendTasks, DEFAULT_ADMIN_CONFIG.girlfriendTasks),
     boyfriendRewards: tasks(parsed.boyfriendRewards, DEFAULT_ADMIN_CONFIG.boyfriendRewards)
   }

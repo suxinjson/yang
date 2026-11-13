@@ -1,6 +1,8 @@
 import crypto from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
-import { createGame, applyGameAction, settleGame, INITIAL_TOOLS } from './gameEngine.js'
+import { createGame, applyGameAction, settleGame } from './gameEngine.js'
+import { logMatches } from './logRules.js'
+import { InventoryService, drawToolRewards, normalizeRewardPolicy } from './inventory.js'
 
 const ID = /^[a-zA-Z0-9_-]{8,100}$/
 const validId = value => typeof value === 'string' && ID.test(value) && !Object.hasOwn(Object.prototype, value) && value !== '__proto__'
@@ -11,7 +13,7 @@ const fail = (message, status = 400) => Object.assign(new Error(message), { stat
 // Runs in one Node process. Each money/inventory operation and its journal rows
 // are committed in the same atomic ledger write, before acknowledging clients.
 export function registerGameplay(app, services) {
-  const { getConfig, getState, getLedger, saveLedger, requireAdminAuth } = services
+  const { getConfig, getState, getLedger, saveLedger, requireAdminAuth, runExclusive } = services
   const rooms = new Map(), timers = new Map(), rates = new Map(), joinRates = new Map()
   const sockets = new Set()
   let checkpoint
@@ -22,12 +24,21 @@ export function registerGameplay(app, services) {
     value.rounds ||= {}; value.rooms ||= {}; value.transactions ||= []
     return value
   }
+  function personalActor(value, req) {
+    const profile = new InventoryService(value).authenticate(req.body)
+    return { ...identity(req, req.body), profileId: profile.id }
+  }
+  function backpack(value, actor) { return actor.profileId ? new InventoryService(value).snapshot(actor.profileId) : undefined }
   function identity(req, supplied = {}) {
-    return { deviceId: validId(supplied.deviceId) ? supplied.deviceId : 'unknown_device', ip: clean(req.ip || req.socket.remoteAddress, 80),
+    return { deviceId: validId(supplied.deviceId) ? supplied.deviceId : 'unknown_device', sessionId: validId(supplied.sessionId) ? supplied.sessionId : '', ip: clean(req.ip || req.socket.remoteAddress, 80),
       device: clean(req.headers['user-agent'], 240), platform: clean(supplied.platform || 'web', 20), version: clean(supplied.version, 30),
       source: supplied.platform === 'android' ? 'android_app' : supplied.platform === 'ios' ? 'ios_app' : 'web' }
   }
   function journal(value, event, actor, details = {}) {
+    if (details.couponId) {
+      const coupon = value.coupons.find(item => item.id === details.couponId)
+      if (coupon) details = { ...details, couponTitle: coupon.title, target: coupon.target }
+    }
     value.transactions.push({ id: crypto.randomUUID(), at: new Date().toISOString(), event, ...actor, details })
     const oldest = Date.now() - 30 * 86400000
     value.transactions = value.transactions.filter(row => Date.parse(row.at) >= oldest).slice(-10000)
@@ -35,15 +46,18 @@ export function registerGameplay(app, services) {
   function compactRound(round) {
     round.game.cards = []; round.game.defs = []; round.game.profile = { name: '', image: '' }
   }
-  function commit(value) {
+  async function commit(value) {
     const cutoff = Date.now() - 30 * 86400000
     for (const [id, round] of Object.entries(value.rounds)) if (round.game.startedAt < cutoff) delete value.rounds[id]
-    saveLedger(value)
+    await saveLedger(value)
   }
   function authorizeRound(value, req) {
     const id = req.body?.roundId
     const round = typeof id === 'string' && Object.hasOwn(value.rounds, id) ? value.rounds[id] : null
     if (!round || !validToken(req.body?.token) || round.token !== req.body.token) throw fail('关卡凭证已失效，请重开本关', 403)
+    const actor = personalActor(value, req)
+    if (round.actor.profileId && round.actor.profileId !== actor.profileId) throw fail('此关卡属于其他个人身份', 403)
+    round.actor.profileId ||= actor.profileId
     return round
   }
   function randomCoupon(value, source, key, actor) {
@@ -54,20 +68,22 @@ export function registerGameplay(app, services) {
     const alternate = preferGf ? config.boyfriendRewards : config.girlfriendTasks
     const pool = preferred?.length ? preferred : alternate
     const chosen = pool?.length ? pool[crypto.randomInt(pool.length)] : { title: '甜蜜心愿券', desc: '兑现一个小心愿', icon: '💖', target: 'boyfriend_pays' }
-    value.coupons.unshift({ ...chosen, id: key, used: false, obtainedAt: `第 ${source.level} 关通关`, obtainedTime: new Date().toISOString(), roundId: source.roundId })
+    value.coupons.unshift({ ...chosen, id: key, used: false, obtainedAt: `第 ${source.level} 关通关`, obtainedTime: new Date().toISOString(), roundId: source.roundId, ownerId: actor.profileId })
     value.operations[key] = { at: new Date().toISOString() }
     journal(value, 'coupon_gain', actor, { couponId: key, roundId: source.roundId, level: source.level, mode: source.mode || 'couple' })
     return key
   }
   function spendCoupon(value, id, actor, purpose, roundId) {
     const coupon = value.coupons.find(coupon => coupon.id === id)
+    if (coupon?.ownerId && coupon.ownerId !== actor.profileId) throw fail('这张券不属于你的背包', 403)
     if (!coupon || coupon.used) throw fail('这张券已使用或已被清空，请选择其他心愿券', 409)
+    if (coupon.ownerId) value.profiles[coupon.ownerId].revision++
     coupon.used = true; coupon.usedAt = new Date().toISOString(); coupon.usedFor = purpose
     journal(value, 'coupon_use', actor, { couponId: id, purpose, roundId })
   }
   function roundEvents(value, game, actor, mode) {
     journal(value, 'round_start', actor, { roundId: game.roundId, level: game.level, total: game.cards.length, mode })
-    journal(value, 'prop_gain', actor, { roundId: game.roundId, level: game.level, mode, items: { ...INITIAL_TOOLS }, source: 'round_start' })
+
   }
   function rate(req, res, next) {
     const key = req.ip, now = Date.now(), item = rates.get(key) || { until: now + 60000, count: 0 }
@@ -77,72 +93,102 @@ export function registerGameplay(app, services) {
     if (rates.size > 10000) for (const [key, item] of rates) if (item.until < now) rates.delete(key)
     next()
   }
-  const route = handler => (req, res) => { try { handler(req, res) } catch (error) { res.status(error.status || 503).json({ error: error.status ? error.message : '保存暂不可用，请重试' }) } }
   app.use('/api/play', rate)
-  app.post('/api/play/solo/start', route((req, res) => {
+  const route = handler => (req, res) => { void runExclusive(async () => { try { await handler(req, res) } catch (error) { res.status(error.status || 503).json({ error: error.status ? error.message : '保存暂不可用，请重试' }) } }) }
+  app.post('/api/play/profile', route(async (req, res) => {
+    const value = ledger(), service = new InventoryService(value), exists = !!value.profiles[req.body?.profileId]
+    const profile = service.create(req.body)
+    if (!exists) {
+      journal(value, 'prop_gain', { ...identity(req, req.body), profileId: profile.id }, { items: { hint: 2, rescue: 1 }, source: 'profile_starter' })
+      await commit(value)
+    }
+    res.json({ backpack: service.snapshot(profile.id) })
+  }))
+  app.post('/api/play/backpack', route(async (req, res) => { const value = ledger(), actor = personalActor(value, req); res.json({ backpack: backpack(value, actor) }) }))
+  function completionRewards(value, game, actor) {
+    const key = 'completion_' + game.roundId + '_' + actor.profileId
+    if (value.operations[key]) return value.operations[key].reward
+    const policy = normalizeRewardPolicy(getConfig().rewardPolicy), inventory = new InventoryService(value)
+    const items = drawToolRewards(policy)
+    for (const item of items) inventory.grant(actor.profileId, item.itemId, item.quantity)
+    let couponId = ''
+    if (crypto.randomInt(1000000) / 10000 < policy.couponChance) {
+      couponId = randomCoupon(value, game, 'reward_' + game.roundId + '_' + actor.profileId, actor)
+      value.profiles[actor.profileId].revision++
+    }
+    const reward = { couponId, items }
+    value.operations[key] = { at: new Date().toISOString(), reward }
+    if (items.length) journal(value, 'prop_gain', actor, { roundId: game.roundId, level: game.level, items, source: 'level_reward', mode: game.mode || 'couple' })
+    return reward
+  }
+  app.post('/api/play/solo/start', route(async (req, res) => {
     const { operationId, level = 1 } = req.body || {}
     if (!validId(operationId) || !validId(req.body.deviceId) || !Number.isInteger(level) || level < 1 || level > getConfig().gameSettings.levels.length) throw fail('关卡参数无效')
-    const value = ledger(), actor = identity(req, req.body)
-    const id = `solo_${actor.deviceId}_${operationId}`
+    const value = ledger(), actor = personalActor(value, req)
+    const id = `solo_${actor.profileId}_${operationId}`
     if (!value.rounds[id] && value.operations[`start_${id}`]) throw fail('该开局请求已过期，请重新开始', 409)
     if (!value.rounds[id]) {
       // Keep finished rounds for retry receipts. Limit abandoned solo state growth.
-      const active = Object.values(value.rounds).filter(round => round.actor.deviceId === actor.deviceId && !round.finished)
+      const active = Object.values(value.rounds).filter(round => round.actor.profileId === actor.profileId && !round.finished)
       for (const round of active) {
         round.finished = 'abandoned'
         journal(value, 'round_end', round.actor, { roundId: round.game.roundId, level: round.game.level, mode: 'solo', outcome: 'restart', elapsedMs: Date.now() - round.game.startedAt })
         compactRound(round)
       }
       const game = createGame(getConfig(), level, id)
+      game.tools = new InventoryService(value).tools(actor.profileId)
       value.rounds[id] = { token: crypto.randomBytes(32).toString('hex'), game, actor, finished: false, operations: {} }
       value.operations[`start_${id}`] = { at: new Date().toISOString() }
       roundEvents(value, game, actor, 'solo')
-      commit(value)
+      await commit(value)
     }
     const round = value.rounds[id]
     if (round.finished) throw fail('该关卡已经结束，请重新开始', 409)
-    res.json({ game: round.game, token: round.token, state: getState(), serverNow: Date.now() })
+    res.json({ game: { ...round.game, tools: new InventoryService(value).tools(actor.profileId) }, token: round.token, backpack: backpack(value, actor), state: getState(), serverNow: Date.now() })
   }))
-  app.post('/api/play/solo/tool', route((req, res) => {
+  app.post('/api/play/solo/tool', route(async (req, res) => {
     const value = ledger(), round = authorizeRound(value, req), { operationId, tool } = req.body
     if (!validId(operationId) || !['hint', 'rescue'].includes(tool)) throw fail('道具参数无效')
     if (round.operations[operationId]) {
       if (round.operations[operationId].tool !== tool) throw fail('操作编号重复', 409)
     } else {
-      if (round.finished || round.game.tools[tool] <= 0) throw fail('道具已用完或关卡已结束', 409)
-      round.game.tools[tool]--
+      if (round.finished) throw fail('道具已用完或关卡已结束', 409)
+      const inventory = new InventoryService(value)
+      inventory.spend(round.actor.profileId, 'gang.' + tool)
+      round.game.tools = inventory.tools(round.actor.profileId)
       round.operations[operationId] = { tool }
       journal(value, 'prop_use', round.actor, { roundId: round.game.roundId, level: round.game.level, mode: 'solo', tool, remaining: round.game.tools[tool], elapsedMs: Date.now() - round.game.startedAt })
-      commit(value)
+      await commit(value)
     }
-    res.json({ tools: round.game.tools, operationId })
+    res.json({ tools: new InventoryService(value).tools(round.actor.profileId), backpack: backpack(value, round.actor), operationId })
   }))
-  app.post('/api/play/solo/sync', route((req, res) => {
-    const round = authorizeRound(ledger(), req)
-    res.json({ tools: round.game.tools, finished: round.finished })
+  app.post('/api/play/solo/sync', route(async (req, res) => {
+    const value = ledger(), round = authorizeRound(value, req)
+    res.json({ tools: new InventoryService(value).tools(round.actor.profileId), backpack: backpack(value, round.actor), finished: round.finished })
   }))
-  app.post('/api/play/solo/blocked', route((req, res) => {
+  app.post('/api/play/solo/blocked', route(async (req, res) => {
     const value = ledger(), round = authorizeRound(value, req)
     if (!round.blocked) {
       round.blocked = true
-      journal(value, 'round_blocked', round.actor, { roundId: round.game.roundId, level: round.game.level, mode: 'solo', elapsedMs: Date.now() - round.game.startedAt })
-      commit(value)
+      journal(value, 'round_blocked', round.actor, { roundId: round.game.roundId, level: round.game.level, mode: 'solo', cause: req.body.cause === 'unmatchable' ? 'unmatchable' : 'slots_full', elapsedMs: Date.now() - round.game.startedAt })
+      await commit(value)
     }
     res.json({ ok: true })
   }))
-  app.post('/api/play/solo/finish', route((req, res) => {
+  app.post('/api/play/solo/finish', route(async (req, res) => {
     const value = ledger(), round = authorizeRound(value, req), { outcome } = req.body
     if (!['won', 'lost', 'abandoned'].includes(outcome)) throw fail('结果参数无效')
     if (!round.finished) {
+      if (outcome === 'won' && round.game.cards.length % 3) throw fail('本关卡片数量不是 3 的倍数，无法完成严格三消，请调整关卡配置')
       round.finished = outcome
-      if (outcome === 'won') round.game.rewardId = randomCoupon(value, { ...round.game, mode: 'solo' }, `reward_${round.game.roundId}`, round.actor)
+      if (outcome === 'won') { round.reward = completionRewards(value, { ...round.game, mode: 'solo' }, round.actor); round.game.rewardId = round.reward.couponId }
       journal(value, 'round_end', round.actor, { roundId: round.game.roundId, level: round.game.level, mode: 'solo', outcome, elapsedMs: Date.now() - round.game.startedAt })
       compactRound(round)
-      commit(value)
+      await commit(value)
     } else if (round.finished !== outcome) throw fail('本关结果已经确认', 409)
-    res.json({ rewardId: round.game.rewardId, state: getState() })
+    res.json({ rewardId: round.game.rewardId, rewards: round.reward?.items || [], backpack: backpack(value, round.actor), state: getState() })
   }))
-  app.post('/api/play/solo/unlock', route((req, res) => {
+  app.post('/api/play/solo/unlock', route(async (req, res) => {
     const value = ledger(), round = authorizeRound(value, req), { operationId, couponId } = req.body
     if (!validId(operationId)) throw fail('操作编号无效')
     if (!round.operations[operationId]) {
@@ -150,20 +196,20 @@ export function registerGameplay(app, services) {
       spendCoupon(value, couponId, round.actor, 'slot_unlock', round.game.roundId)
       round.game.unlocked++
       round.operations[operationId] = { tool: 'unlock', couponId }
-      commit(value)
+      await commit(value)
     } else if (round.operations[operationId].tool !== 'unlock' || round.operations[operationId].couponId !== couponId) throw fail('操作编号重复', 409)
-    res.json({ operationId, state: getState() })
+    res.json({ operationId, backpack: backpack(value, round.actor), state: getState() })
   }))
-  app.post('/api/play/coupons/redeem', route((req, res) => {
+  app.post('/api/play/coupons/redeem', route(async (req, res) => {
     const { operationId, couponId } = req.body || {}
     if (!validId(operationId) || typeof couponId !== 'string') throw fail('兑现参数无效')
-    const value = ledger(), key = `redeem_${operationId}`
+    const value = ledger(), actor = personalActor(value, req), key = `redeem_${actor.profileId}_${operationId}`
     if (!value.operations[key]) {
-      spendCoupon(value, couponId, identity(req, req.body), 'redeem', '')
+      spendCoupon(value, couponId, actor, 'redeem', '')
       value.operations[key] = { couponId, at: new Date().toISOString() }
-      commit(value)
+      await commit(value)
     } else if (value.operations[key].couponId !== couponId) throw fail('操作编号重复', 409)
-    res.json({ state: getState() })
+    res.json({ backpack: backpack(value, actor), state: getState() })
   }))
 
   function getRoom(id) {
@@ -183,7 +229,7 @@ export function registerGameplay(app, services) {
       connected: new Set([...sockets].filter(socket => socket.roomId === room.id && socket.readyState === WebSocket.OPEN).map(socket => socket.memberToken)).size,
       expiresAt: room.expiresAt }
   }
-  function persistRoom(value, room) { value.rooms[room.id] = room; commit(value) }
+  async function persistRoom(value, room) { value.rooms[room.id] = room; await commit(value) }
   function send(socket, message) {
     if (socket.readyState !== WebSocket.OPEN) return
     if (socket.bufferedAmount > 256 * 1024) { socket.close(1013, 'Please reconnect'); return }
@@ -191,7 +237,13 @@ export function registerGameplay(app, services) {
     try { socket.send(JSON.stringify(message), error => { if (error) socket.terminate() }) }
     catch { socket.terminate() }
   }
-  function snapshot(socket, room, extra = {}) { send(socket, { type: 'snapshot', room: roomInfo(room), game: room.game, serverNow: Date.now(), ...extra }) }
+  function personalized(value, room, token) {
+    const actor = room.members.find(member => member.token === token)?.actor
+    const bag = actor?.profileId ? backpack(value, actor) : undefined
+    const reward = room.rewardByProfile?.[actor?.profileId]
+    return { game: { ...room.game, tools: bag?.tools || { hint: 0, rescue: 0 }, rewardId: reward?.couponId || '', rewards: reward?.items || [] }, backpack: bag }
+  }
+  function snapshot(socket, room, extra = {}) { send(socket, { type: 'snapshot', room: roomInfo(room), ...personalized(ledger(), room, socket.memberToken), serverNow: Date.now(), ...extra }) }
   function copyRoom(room) {
     const game = room.game
     return { ...room, operations: { ...room.operations }, game: { ...game, cards: game.cards.map(card => ({ ...card })),
@@ -206,26 +258,31 @@ export function registerGameplay(app, services) {
     for (const key of Object.keys(room.game)) if (key !== 'cards' && before[key] !== room.game[key] && JSON.stringify(before[key]) !== JSON.stringify(room.game[key])) changed[key] = room.game[key]
     const oldCards = new Map(before.cards.map(card => [card.id, card]))
     changed.cardsChanged = room.game.cards.filter(card => JSON.stringify(oldCards.get(card.id)) !== JSON.stringify(card))
-    for (const socket of sockets) if (socket.roomId === room.id) send(socket, { type: 'patch', baseRevision: room.revision - 1, room: roomInfo(room), patch: changed, ack, serverNow: Date.now() })
+    for (const socket of sockets) if (socket.roomId === room.id) {
+      const personal = personalized(ledger(), room, socket.memberToken)
+      send(socket, { type: 'patch', baseRevision: room.revision - 1, room: roomInfo(room), patch: { ...changed, tools: personal.game.tools, rewardId: personal.game.rewardId, rewards: personal.game.rewards }, backpack: personal.backpack, ack, serverNow: Date.now() })
+    }
   }
   function scheduleCheckpoint() {
     if (checkpoint) return
-    checkpoint = setTimeout(() => {
+    checkpoint = setTimeout(() => { void runExclusive(async () => {
       checkpoint = undefined
-      try { const value = ledger(); for (const [id, room] of rooms) value.rooms[id] = room; saveLedger(value, false) }
+      try { const value = ledger(); for (const [id, room] of rooms) value.rooms[id] = room; await saveLedger(value, false) }
       catch { for (const socket of sockets) send(socket, { type: 'error', error: '同步保存暂不可用，请稍后重连' }) }
-    }, 1000)
+    }) }, 1000)
     checkpoint.unref()
   }
   function finishRoom(value, room, actor) {
-    if (room.game.phase === 'won' && !room.game.rewardId) {
-      room.game.rewardId = randomCoupon(value, room.game, `reward_${room.game.roundId}`, actor)
+    if (room.game.phase === 'won' && !room.rewardByProfile) {
+      room.rewardByProfile = {}
+      for (const member of room.members) if (member.actor.profileId) room.rewardByProfile[member.actor.profileId] = completionRewards(value, room.game, member.actor)
+      room.game.rewardId = 'confirmed'
       journal(value, 'round_end', actor, { roundId: room.game.roundId, level: room.game.level, mode: 'couple', outcome: 'won', elapsedMs: Date.now() - room.game.startedAt })
     }
   }
   function scheduleSettle(room) {
     if (!room.game.resolveAt || timers.has(room.id)) return
-    const timer = setTimeout(() => {
+    const timer = setTimeout(() => { void runExclusive(async () => {
       timers.delete(room.id)
       const current = rooms.get(room.id)
       if (!current || current.game.roundId !== room.game.roundId) return
@@ -234,14 +291,19 @@ export function registerGameplay(app, services) {
       try {
         if (!settleGame(next.game)) { scheduleSettle(room); return }
         next.revision++
-        if (next.game.phase === 'won') { const value = ledger(); finishRoom(value, next, next.members[0].actor); persistRoom(value, next) }
-        rooms.set(room.id, next); publish(next, before); scheduleCheckpoint()
+        if (next.game.phase === 'won' || next.game.phase === 'lost') {
+          const value = ledger()
+          if (next.game.phase === 'won') finishRoom(value, next, next.members[0].actor)
+          else journal(value, 'round_blocked', next.members[0].actor, { roundId: next.game.roundId, level: next.game.level, mode: 'couple', cause: 'unmatchable', elapsedMs: Date.now() - next.game.startedAt })
+          await persistRoom(value, next)
+        }
+        rooms.set(room.id, next); publish(next, before); scheduleSettle(next); scheduleCheckpoint()
       } catch { for (const socket of sockets) if (socket.roomId === room.id) send(socket, { type: 'error', error: '通关保存失败，请重新连接重试' }) }
-    }, Math.max(0, room.game.resolveAt - Date.now()))
+    }) }, Math.max(0, room.game.resolveAt - Date.now()))
     timer.unref(); timers.set(room.id, timer)
   }
   function roomResponse(res, room, token) {
-    res.json({ room: roomInfo(room), token, game: room.game, state: getState(), serverNow: Date.now() })
+    res.json({ room: roomInfo(room), token, ...personalized(ledger(), room, token), state: getState(), serverNow: Date.now() })
   }
   function entryReceipt(req, value, kind) {
     const { operationId, claimToken, deviceId, code } = req.body || {}
@@ -265,9 +327,9 @@ export function registerGameplay(app, services) {
   function saveEntry(value, receipt, room, token) {
     if (receipt) value.operations[receipt.key] = { fingerprint: receipt.fingerprint, roomId: room.id, token, at: new Date().toISOString() }
   }
-  app.post('/api/play/rooms', route((req, res) => {
+  app.post('/api/play/rooms', route(async (req, res) => {
     if (!validId(req.body?.deviceId)) throw fail('设备标识无效')
-    const value = ledger(), actor = identity(req, req.body)
+    const value = ledger(), actor = personalActor(value, req)
     const receipt = entryReceipt(req, value, 'create')
     if (retryEntry(res, receipt)) return
     for (const [id, room] of Object.entries(value.rooms)) if (room.expiresAt < Date.now()) { delete value.rooms[id]; rooms.delete(id) }
@@ -279,10 +341,10 @@ export function registerGameplay(app, services) {
     const room = { id, code, revision: 0, expiresAt: Date.now() + 24 * 3600000, members: [{ token, actor }], game, operations: {} }
     roundEvents(value, game, actor, 'couple'); journal(value, 'room_create', actor, { roomId: id })
     saveEntry(value, receipt, room, token)
-    persistRoom(value, room); rooms.set(id, room)
+    await persistRoom(value, room); rooms.set(id, room)
     roomResponse(res, room, token)
   }))
-  app.post('/api/play/rooms/join', route((req, res) => {
+  app.post('/api/play/rooms/join', route(async (req, res) => {
     const value = ledger(), receipt = entryReceipt(req, value, 'join')
     if (retryEntry(res, receipt)) return
     const now = Date.now(), attempt = joinRates.get(req.ip) || { until: now + 60000, count: 0 }
@@ -294,23 +356,27 @@ export function registerGameplay(app, services) {
     if (typeof code !== 'string' || !/^\d{4}$/.test(code) || !validId(deviceId)) throw fail('请输入四位房间密码')
     const saved = Object.values(value.rooms).find(room => room.code === code && room.expiresAt > Date.now())
     if (!saved) throw fail('房间不存在或已过期', 404)
-    const room = structuredClone(getRoom(saved.id)), actor = identity(req, req.body)
+    const room = structuredClone(getRoom(saved.id)), actor = personalActor(value, req)
+    if (room.game.phase === 'won' || room.members.some(member => member.actor.profileId === actor.profileId)) throw fail('请使用不同个人身份在新关卡加入', 409)
     // A saved membership token is required to reconnect. A device ID is never a credential.
     if (room.members.length >= 2) throw fail('房间已满，两人可使用原页面重新连接', 409)
     const token = crypto.randomBytes(32).toString('hex')
     room.members.push({ token, actor }); room.revision++
     saveEntry(value, receipt, room, token)
-    journal(value, 'room_join', actor, { roomId: room.id }); persistRoom(value, room); rooms.set(room.id, room)
+    journal(value, 'room_join', actor, { roomId: room.id }); await persistRoom(value, room); rooms.set(room.id, room)
     for (const socket of sockets) if (socket.roomId === room.id) snapshot(socket, room)
     roomResponse(res, room, token)
   }))
-  app.post('/api/play/rooms/resume', route((req, res) => {
-    const room = authRoom(req.body?.roomId, req.body?.token)
+  app.post('/api/play/rooms/resume', route(async (req, res) => {
+    const room = structuredClone(authRoom(req.body?.roomId, req.body?.token)), value = ledger(), actor = personalActor(value, req)
+    const member = room.members.find(member => member.token === req.body.token)
+    if (member.actor.profileId && member.actor.profileId !== actor.profileId) throw fail('房间凭证属于其他个人身份', 403)
+    if (!member.actor.profileId) { member.actor.profileId = actor.profileId; await persistRoom(value, room); rooms.set(room.id, room) }
     scheduleSettle(room)
-    res.json({ room: roomInfo(room), token: req.body.token, game: room.game, state: getState(), serverNow: Date.now() })
+    roomResponse(res, room, req.body.token)
   }))
 
-  function command(socket, message) {
+  async function command(socket, message) {
     if (socket.superseded) throw fail('该连接已由新页面接管', 409)
     const room = authRoom(socket.roomId, socket.memberToken)
     const { operationId, revision, action, roundId } = message
@@ -329,15 +395,18 @@ export function registerGameplay(app, services) {
       if (room.game.phase !== 'won') journal(value, 'round_end', actor, { roundId, level: room.game.level, mode: 'couple', outcome: 'restart', elapsedMs: Date.now() - room.game.startedAt })
       const level = action.type === 'next' ? room.game.level % room.game.settings.levels.length + 1 : room.game.level
       next.game = createGame(getConfig(), level)
+      next.rewardByProfile = undefined
       roundEvents(value, next.game, actor, 'couple')
     } else {
       const verifiedAction = { type: action.type, cardId: action.cardId, tab: action.tab }
       if (action.type === 'unlock' && next.game.settings.slotUnlockCondition === 'love_coupon') {
         value = ledger(); spendCoupon(value, action.couponId, actor, 'slot_unlock', roundId); verifiedAction.couponConfirmed = true
       }
+      if (['hint', 'rescue'].includes(action.type)) { value ||= ledger(); next.game.tools = new InventoryService(value).tools(actor.profileId) }
       applyGameAction(next.game, verifiedAction)
       if (['hint', 'rescue'].includes(action.type)) {
         value ||= ledger()
+        new InventoryService(value).spend(actor.profileId, 'gang.' + action.type)
         journal(value, 'prop_use', actor, { roundId, mode: 'couple', level: room.game.level, tool: action.type, remaining: next.game.tools[action.type], elapsedMs: Date.now() - room.game.startedAt })
       }
       if (next.game.phase === 'lost' && before.phase !== 'lost') {
@@ -350,7 +419,7 @@ export function registerGameplay(app, services) {
       const oldestMove = Object.keys(next.operations).find(key => !next.operations[key]?.critical)
       if (oldestMove) delete next.operations[oldestMove]
     }
-    if (value) persistRoom(value, next)
+    if (value) { next.game.tools = { hint: 0, rescue: 0 }; await persistRoom(value, next) }
     if (next.game.roundId !== before.roundId && timers.has(room.id)) { clearTimeout(timers.get(room.id)); timers.delete(room.id) }
     rooms.set(room.id, next); publish(next, before, operationId); scheduleSettle(next); scheduleCheckpoint()
   }
@@ -358,19 +427,20 @@ export function registerGameplay(app, services) {
   app.get('/api/play/admin/overview', requireAdminAuth, route((_req, res) => {
     const value = ledger()
     const activeRooms = Object.values(value.rooms).filter(room => room.expiresAt > Date.now()).map(saved => rooms.get(saved.id) || saved)
-    res.json({ rooms: activeRooms.map(room => ({ ...roomInfo(room), level: room.game.level, roundId: room.game.roundId, phase: room.game.phase, tools: room.game.tools,
+    res.json({ rooms: activeRooms.map(room => ({ ...roomInfo(room), level: room.game.level, roundId: room.game.roundId, phase: room.game.phase, tools: undefined,
       startedAt: room.game.startedAt, remaining: room.game.cards.filter(card => card.status !== 'cleared').length,
-      membersInfo: room.members.map(member => ({ ...member.actor, token: undefined })) })),
-      rounds: Object.values(value.rounds).slice(-100).map(round => ({ roundId: round.game.roundId, level: round.game.level, startedAt: round.game.startedAt, finished: round.finished, tools: round.game.tools, actor: round.actor })),
+      membersInfo: room.members.map(member => ({ ...member.actor, tools: member.actor.profileId ? new InventoryService(value).tools(member.actor.profileId) : { hint: 0, rescue: 0 } })) })),
+      rounds: Object.values(value.rounds).slice(-100).map(round => ({ roundId: round.game.roundId, level: round.game.level, startedAt: round.game.startedAt, finished: round.finished, tools: new InventoryService(value).tools(round.actor.profileId), actor: round.actor })),
+      profiles: Object.values(value.profiles || {}).map(profile => ({ profileId: profile.id, createdAt: profile.createdAt, ...new InventoryService(value).snapshot(profile.id) })),
       coupons: value.coupons, transactions: value.transactions.slice(-100).reverse() })
   }))
-  app.post('/api/play/admin/control', requireAdminAuth, route((req, res) => {
-    const { roomId, roundId, action, tool, count, level, couponId, title, desc } = req.body || {}
+  app.post('/api/play/admin/control', requireAdminAuth, route(async (req, res) => {
+    const { roomId, roundId, profileId, action, tool, count, level, couponId, title, desc } = req.body || {}
     const actor = { ...identity(req, req.body), source: 'admin_web' }, value = ledger()
     const operationId = req.body.operationId
     if (operationId !== undefined && !validId(operationId)) throw fail('操作编号无效')
     const operationKey = operationId ? `admin_${operationId}` : ''
-    const fingerprint = JSON.stringify({ roomId, roundId, action, tool, count, level, couponId, title, desc })
+    const fingerprint = JSON.stringify({ roomId, roundId, profileId, action, tool, count, level, couponId, title, desc })
     if (operationKey && value.operations[operationKey]) {
       if (value.operations[operationKey].fingerprint !== fingerprint) throw fail('操作编号重复', 409)
       res.json({ success: true, state: getState() }); return
@@ -391,7 +461,9 @@ export function registerGameplay(app, services) {
         roundEvents(value, next.game, actor, 'couple')
       } else if (action === 'grant_tool') {
         if (!['hint', 'rescue'].includes(tool) || !Number.isInteger(count) || count < 1 || count > 20) throw fail('道具数量应为 1–20')
-        next.game.tools[tool] += count
+        const members = next.members.filter(member => !profileId || member.actor.profileId === profileId)
+        if (!members.length) throw fail('请选择房间中的个人身份')
+        for (const member of members) new InventoryService(value).grant(member.actor.profileId, 'gang.' + tool, count)
         journal(value, 'prop_gain', actor, { roomId, roundId: next.game.roundId, tool, count, source: 'admin_grant', mode: 'couple' })
       } else throw fail('未知管理操作')
       next.revision++; value.rooms[roomId] = next
@@ -399,22 +471,31 @@ export function registerGameplay(app, services) {
       const round = value.rounds[roundId]
       if (!round || round.finished) throw fail('单人关卡已结束', 409)
       if (!['hint', 'rescue'].includes(tool) || !Number.isInteger(count) || count < 1 || count > 20) throw fail('道具数量应为 1–20')
-      round.game.tools[tool] += count
+      new InventoryService(value).grant(round.actor.profileId, 'gang.' + tool, count)
+      round.game.tools = new InventoryService(value).tools(round.actor.profileId)
       journal(value, 'prop_gain', actor, { roundId, tool, count, source: 'admin_grant', mode: 'solo' })
+    } else if (profileId && action === 'grant_tool') {
+      if (!['hint', 'rescue'].includes(tool) || !Number.isInteger(count) || count < 1 || count > 20 || !value.profiles?.[profileId]) throw fail('个人身份或道具数量无效')
+      new InventoryService(value).grant(profileId, 'gang.' + tool, count)
+      journal(value, 'prop_gain', actor, { profileId, tool, count, source: 'admin_grant' })
     } else if (action === 'grant_coupon') {
       if (typeof title !== 'string' || !title.trim()) throw fail('请输入券名')
+      if (profileId && !value.profiles?.[profileId]) throw fail('个人身份不存在')
       const id = `admin_${crypto.randomUUID()}`
-      value.coupons.unshift({ id, title: clean(title, 80), desc: clean(desc, 500), icon: '🎁', target: 'boyfriend_pays', used: false, obtainedAt: '管理员发放', obtainedTime: new Date().toISOString() })
+      if (profileId) value.profiles[profileId].revision++
+      value.coupons.unshift({ id, title: clean(title, 80), desc: clean(desc, 500), icon: '🎁', target: 'boyfriend_pays', used: false, obtainedAt: '管理员发放', obtainedTime: new Date().toISOString(), ...(profileId ? { ownerId: profileId } : {}) })
       journal(value, 'coupon_gain', actor, { couponId: id, source: 'admin_grant' })
     } else if (action === 'revoke_coupon') {
       if (!value.coupons.some(coupon => coupon.id === couponId)) throw fail('券不存在', 404)
+      const revoked = value.coupons.find(coupon => coupon.id === couponId)
+      if (revoked.ownerId && value.profiles?.[revoked.ownerId]) value.profiles[revoked.ownerId].revision++
       value.coupons = value.coupons.filter(coupon => coupon.id !== couponId)
       value.operations[couponId] ||= { at: new Date().toISOString() }
       journal(value, 'coupon_revoke', actor, { couponId })
     } else throw fail('管理参数无效')
     journal(value, 'admin_control', actor, { action, roomId, roundId })
     if (operationKey) value.operations[operationKey] = { fingerprint, at: new Date().toISOString() }
-    commit(value)
+    await commit(value)
     if (next) {
       if (timers.has(roomId) && (next.expiresAt < Date.now() || next.game.roundId !== before.roundId)) { clearTimeout(timers.get(roomId)); timers.delete(roomId) }
       rooms.set(roomId, next); if (next.expiresAt >= Date.now()) publish(next, before)
@@ -426,13 +507,15 @@ export function registerGameplay(app, services) {
     socket.alive = true; let authenticated = false, count = 0, windowAt = Date.now()
     const authTimeout = setTimeout(() => { if (!authenticated) socket.close(1008, 'Authentication required') }, 5000)
     socket.on('pong', () => { socket.alive = true })
-    socket.on('message', raw => {
+    socket.on('message', raw => { void runExclusive(async () => {
       try {
         if (Date.now() - windowAt > 1000) { windowAt = Date.now(); count = 0 }
         if (++count > 30) throw fail('操作过快，请稍候')
         const message = JSON.parse(raw.toString())
         if (!authenticated) {
           const room = authRoom(message.roomId, message.token)
+          const profile = new InventoryService(ledger()).authenticate(message)
+          if (room.members.find(member => member.token === message.token).actor.profileId !== profile.id) throw fail('房间身份不匹配', 403)
           socket.roomId = room.id; socket.memberToken = message.token
           // A refreshed page replaces only its own old connection.
           for (const peer of sockets) if (peer.roomId === room.id && peer.memberToken === message.token) {
@@ -443,13 +526,13 @@ export function registerGameplay(app, services) {
           scheduleSettle(room)
         } else if (socket.superseded) return
         else if (message.type === 'sync') snapshot(socket, authRoom(socket.roomId, socket.memberToken))
-        else command(socket, message)
+        else await command(socket, message)
       } catch (error) {
         const definitive = error.status >= 400 && error.status < 500
         send(socket, { type: 'error', rejected: definitive ? (() => { try { return JSON.parse(raw).operationId } catch { return undefined } })() : undefined,
           error: error.status ? error.message : '操作保存未确认，正在重连重试' })
       }
-    })
+    }) })
     socket.on('error', () => {})
     socket.on('close', () => {
       clearTimeout(authTimeout); sockets.delete(socket)
@@ -473,12 +556,18 @@ export function registerGameplay(app, services) {
         wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req))
       })
     },
+    broadcastBackpacks(value) {
+      for (const socket of sockets) {
+        const actor = rooms.get(socket.roomId)?.members.find(member => member.token === socket.memberToken)?.actor
+        if (actor?.profileId) send(socket, { type: 'backpack', backpack: backpack(value, actor) })
+      }
+    },
     broadcastState(state) { for (const socket of sockets) send(socket, { type: 'global', state }) },
     journal,
     identity,
     queryTransactions(params) {
-      return (ledger().transactions || []).filter(row => (!params.deviceId || row.deviceId === params.deviceId) && (!params.source || row.source === params.source) && (!params.sessionId || row.sessionId === params.sessionId) && (!params.event || row.event === params.event) && (!params.from || row.at.slice(0, 10) >= params.from) && (!params.to || row.at.slice(0, 10) <= params.to))
+      return (ledger().transactions || []).filter(row => logMatches(row, params))
     },
-    flush() { if (rooms.size) { const value = ledger(); for (const [id, room] of rooms) value.rooms[id] = room; saveLedger(value, false) } }
+    flush() { return runExclusive(async () => { if (rooms.size) { const value = ledger(); for (const [id, room] of rooms) value.rooms[id] = room; await saveLedger(value, false) } }) }
   }
 }

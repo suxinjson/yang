@@ -4,7 +4,7 @@ import path from 'node:path'
 import WebSocket from 'ws'
 import { backend } from './helpers/backend'
 
-const state = (page: Page) => page.evaluate(() => JSON.parse(JSON.stringify((document.querySelector('#app') as any).__vue_app__._instance.setupState.game)))
+const state = (page: Page) => page.evaluate(() => { const setup = (document.querySelector('#app') as any).__vue_app__._instance.setupState; const game = JSON.parse(JSON.stringify(setup.game)); if (setup.couple) { delete game.tools; delete game.rewardId; delete game.rewards }; return game })
 async function clickPick(page: Page) {
   await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
   await page.locator('.board-arena .is-clickable').first().click()
@@ -15,7 +15,7 @@ test('Android solo picks stay local, meaningful inventory and coupon transaction
   const server = await backend()
   try {
     const token = await server.login()
-    await server.post('/api/config', { gameSettings: { levels: [{ minCards: 6, maxCards: 6, types: 1 }] } }, token)
+    await server.post('/api/config', { rewardPolicy: { simultaneous: true, hintChance: 100, rescueChance: 0, couponChance: 100 }, gameSettings: { levels: [{ minCards: 6, maxCards: 6, types: 1 }] } }, token)
     await server.attach(page, true)
     const requests: string[] = []
     page.on('request', request => { if (request.url().includes('/api/')) requests.push(new URL(request.url()).pathname) })
@@ -26,8 +26,8 @@ test('Android solo picks stay local, meaningful inventory and coupon transaction
     expect((await state(page)).slots).toHaveLength(1)
     expect(requests).toHaveLength(baseline)
     expect(requests.some(url => /events|heartbeat|client\/state/.test(url))).toBe(false)
-    await page.getByRole('button', { name: /透视提示/ }).click()
-    await expect(page.getByRole('button', { name: /透视提示/ })).toContainText('剩 1 次')
+    await page.getByRole('button', { name: /透视卡/ }).click()
+    await expect(page.getByRole('button', { name: /透视卡/ })).toContainText('剩 1 次')
     await page.route('**/api/play/solo/finish', async route => { await route.fetch({ url: server.base + '/api/play/solo/finish' }); await route.abort() }, { times: 1 })
     for (let pick = 1; pick < 6; pick++) await clickPick(page)
     await expect(page.getByText('第 1 关顺利通关！')).toBeVisible()
@@ -43,7 +43,7 @@ test('Android solo picks stay local, meaningful inventory and coupon transaction
     expect(events.map((row: any) => row.event).sort()).toEqual(['coupon_gain', 'prop_gain', 'prop_use', 'round_end', 'round_start'])
     expect(events.every((row: any) => row.source === 'android_app' && row.ip && row.device)).toBe(true)
     expect(events.find((row: any) => row.event === 'round_end').details.elapsedMs).toBeGreaterThan(0)
-    await page.getByRole('button', { name: /查看.*存折/ }).click()
+    await page.getByRole('button', { name: /查看我的背包/ }).click()
     await page.getByRole('button', { name: /兑现/ }).first().click()
     await expect.poll(() => readLedger().transactions.filter((row: any) => row.event === 'coupon_use').length).toBe(1)
     const coupon = readLedger().coupons.find((coupon: any) => coupon.used)
@@ -62,7 +62,7 @@ test('solo tool lost acknowledgement retries the same receipt without double con
       operationId = route.request().postDataJSON().operationId
       await route.fetch({ url: server.base + '/api/play/solo/tool' }); await route.abort()
     }, { times: 1 })
-    await page.getByRole('button', { name: /透视提示/ }).click()
+    await page.getByRole('button', { name: /透视卡/ }).click()
     await expect(page.getByRole('button', { name: '重试未确认操作' })).toBeVisible()
     await page.reload(); await ready(page)
     await page.getByRole('button', { name: '重试未确认操作' }).click()
@@ -98,7 +98,7 @@ test('couple mode synchronizes both directions, animations, modals, rewards, rec
     expect(await state(partner)).toEqual(await state(page))
     await clickPick(page); await expect(partner.locator('.in-slot')).toHaveCount(1)
     await clickPick(partner); await expect(page.locator('.in-slot')).toHaveCount(2)
-    await page.getByRole('button', { name: /默契救场/ }).click()
+    await page.getByRole('button', { name: /召唤男友卡/ }).click()
     await expect(partner.getByTestId('rescue-photo-name')).toBeVisible()
     expect(await state(partner)).toEqual(await state(page))
     await partner.getByRole('button', { name: /继续一起闯关/ }).click()
@@ -109,17 +109,21 @@ test('couple mode synchronizes both directions, animations, modals, rewards, rec
     await expect(page.locator('.staged-area')).toHaveCount(0)
     await partner.reload(); await expect(partner.getByText('已连接 2/2 人')).toBeVisible()
     expect(await state(partner)).toEqual(await state(page))
-    for (let pick = 2; pick < 12; pick++) await clickPick(pick % 2 ? partner : page)
+    for (let pick = 2; pick < 12; pick++) {
+      await clickPick(pick % 2 ? partner : page)
+      await expect.poll(async () => (await state(page)).cards.filter((card: any) => card.status === 'board').length).toBe(11 - pick)
+      await expect.poll(async () => (await state(partner)).cards.filter((card: any) => card.status === 'board').length).toBe(11 - pick)
+    }
     await expect(page.getByText('第 1 关顺利通关！')).toBeVisible()
     await expect(partner.getByText('第 1 关顺利通关！')).toBeVisible()
-    expect((await state(page)).rewardId).toBe((await state(partner)).rewardId)
+    expect(await page.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.game.rewardId)).not.toBe(await partner.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.game.rewardId))
     const roomId = await page.evaluate(() => JSON.parse(localStorage.getItem('gang_room_credentials')!).roomId)
     const ledger = JSON.parse(readFileSync(path.join(server.directory, 'coupon-ledger.json'), 'utf8'))
     const roundId = (await state(page)).roundId
-    expect(ledger.coupons.filter((coupon: any) => coupon.roundId === roundId)).toHaveLength(1)
+    expect(ledger.coupons.filter((coupon: any) => coupon.roundId === roundId)).toHaveLength(2)
     expect(ledger.transactions.some((row: any) => /click|card_pick|heartbeat/.test(row.event))).toBe(false)
-    await page.getByRole('button', { name: /查看.*存折/ }).click()
-    await expect(partner.getByRole('heading', { name: /存折/ })).toBeVisible()
+    await page.getByRole('button', { name: /查看我的背包/ }).click()
+    await expect(partner.getByRole('heading', { name: '我的背包' })).toBeVisible()
     expect((await state(partner)).modal).toBe('coupons')
     await partner.getByRole('tab', { name: /待兑现/ }).click()
     await expect.poll(async () => (await state(page)).couponTab).toBe('unredeemed')
@@ -168,7 +172,7 @@ test('developer dashboard is separate from the App, saves in place and manages t
     await expect(page.getByText('已保存并同步到服务器', { exact: true })).toBeVisible()
     await expect(page.getByTestId('game-settings')).toBeVisible()
     await expect(page.getByRole('button', { name: /保存并退出/ })).toHaveCount(0)
-    await page.getByRole('button', { name: /运行与全局账本/ }).click()
+    await page.getByRole('button', { name: /运行与个人背包/ }).click()
     await page.getByLabel('发放券名').fill('开发者验证券')
     await page.getByLabel('发放券说明').fill('全局账本事务验证')
     await page.getByRole('button', { name: '发放心愿券' }).click()
@@ -196,7 +200,7 @@ test('simultaneous room picks serialize, stale tool requests do not spend, and c
       const socket = new WebSocket(server.base.replace('http:', 'ws:') + '/api/play/socket'); sockets.push(socket)
       await new Promise<void>(resolve => socket.once('open', resolve))
       const ready = message(socket, data => data.type === 'snapshot')
-      socket.send(JSON.stringify({ type: 'auth', roomId: member.room.id, token: member.token })); await ready
+      socket.send(JSON.stringify({ type: 'auth', ...server.credentials(member.backpack.profileId), roomId: member.room.id, token: member.token })); await ready
     }
     const command = { type: 'command', revision: partner.room.revision, roundId: creator.game.roundId }
     const hint = { ...command, operationId: 'parallel_hint_001', action: { type: 'hint' } }
@@ -205,7 +209,7 @@ test('simultaneous room picks serialize, stale tool requests do not spend, and c
     ack = message(sockets[0], data => data.ack === hint.operationId)
     sockets[0].send(JSON.stringify(hint)); expect((await ack).game.tools.hint).toBe(1)
     const rejected = message(sockets[1], data => data.rejected === 'parallel_hint_002')
-    sockets[1].send(JSON.stringify({ ...hint, operationId: 'parallel_hint_002' })); expect((await rejected).game.tools.hint).toBe(1)
+    sockets[1].send(JSON.stringify({ ...hint, operationId: 'parallel_hint_002' })); expect((await rejected).game.tools.hint).toBe(2)
     const cards = creator.game.cards.filter((card: any) => !card.isCovered).slice(0, 2)
     expect(cards).toHaveLength(2)
     const picks = sockets.map((socket, index) => message(socket, data => data.ack === `parallel_pick_00${index}`))

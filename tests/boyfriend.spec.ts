@@ -20,6 +20,7 @@ async function setup(page: Page) {
   await page.getByPlaceholder('请输入管理员密码...').fill('admin')
   await page.getByRole('button', { name: /登录后台/ }).click()
   await page.getByRole('button', { name: /卡牌种类与图片/ }).click()
+  await page.getByText('救场形象设置', { exact: true }).click()
   await expect(page.getByTestId('boyfriend-settings')).toBeVisible()
   return { config: () => JSON.parse(readFileSync(path.join(server.directory, 'config.json'), 'utf8')) }
 }
@@ -37,7 +38,7 @@ test('legacy names and images migrate, preset switching is preserved, bad values
   expect(normalizeBoyfriendSettings(migrated)).toEqual(migrated)
 })
 
-test('rename and replace a photo, persist it and show it in cards and rescue', async ({ page }) => {
+test('rename and replace a rescue photo without changing ordinary grouped cards', async ({ page }) => {
   const fixture = await setup(page)
   await page.getByLabel('帅照2名字', { exact: true }).fill('专属救场队长')
   await page.getByLabel('使用哪张帅照', { exact: true }).selectOption('2')
@@ -57,48 +58,31 @@ test('rename and replace a photo, persist it and show it in cards and rescue', a
   await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
   await page.getByTitle('重新开始本关').click()
   await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
-  await expect(page.locator('.board-arena .game-card').filter({ hasText: '专属救场队长' }).first()).toBeVisible()
+  await expect(page.locator('.board-arena .game-card').filter({ hasText: '专属救场队长' })).toHaveCount(0)
   await page.locator('.board-arena .is-clickable').first().click()
-  await page.getByRole('button', { name: /应急救场/ }).click()
+  await page.getByRole('button', { name: /召唤男友卡/ }).click()
   await expect(page.getByTestId('rescue-photo-name')).toHaveText('专属救场队长')
   await expect(page.getByAltText('专属救场队长', { exact: true }).last()).toHaveAttribute('src', fixture.config().bfPhotos[1].image)
   await page.goto('/')
-  await expect(page.locator('.board-arena .game-card').filter({ hasText: '专属救场队长' }).first()).toBeVisible()
+  await expect(page.locator('.board-arena .game-card').filter({ hasText: '专属救场队长' })).toHaveCount(0)
 })
 
-test('deck toggle applies next round and rescue continues to use the configured photo', async ({ page }) => {
+test('level group selection excludes boyfriend cards while rescue keeps its configured image', async ({ page }) => {
   const fixture = await setup(page)
-  await expect(page.locator('.board-arena')).toHaveCount(0)
-  await page.getByLabel('男友帅照加入叠叠卡牌', { exact: true }).uncheck()
-  await expect.poll(() => fixture.config().bfCardEnabled).toBe(false)
-  await expect(page.locator('.board-arena')).toHaveCount(0)
   await page.getByLabel('帅照1名字', { exact: true }).fill('救场专用')
   await page.getByRole('button', { name: '保存全部配置' }).click()
   await expect(page.getByText('已保存并同步到服务器', { exact: true })).toBeVisible()
-  await page.goto('/')
-  await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
-  await page.getByTitle('重新开始本关').click()
-  await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
-  const types = await page.evaluate(() => {
-    const state = (document.querySelector('#app') as any).__vue_app__._instance.setupState
-    return state.allCards.map((card: any) => card.type)
-  })
-  expect(types).not.toContain('boyfriend_photo')
-  await page.locator('.board-arena .is-clickable').first().click()
-  await page.getByRole('button', { name: /应急救场/ }).click()
-  await expect(page.getByTestId('rescue-photo-name')).toHaveText('救场专用')
-  await page.getByRole('button', { name: /继续.*闯关/ }).click()
-  await page.goto('/?admin')
-  await page.getByRole('button', { name: /卡牌种类与图片/ }).click()
-  await expect(page.getByLabel('男友帅照加入叠叠卡牌', { exact: true })).not.toBeChecked()
-  await page.getByLabel('男友帅照加入叠叠卡牌', { exact: true }).check()
+  await page.getByRole('button', { name: '关卡与布局', exact: true }).click()
+  await page.getByLabel('第1关使用男友帅照', { exact: true }).uncheck()
   await page.getByRole('button', { name: '保存全部配置' }).click()
-  await expect(page.getByText('已保存并同步到服务器', { exact: true })).toBeVisible()
+  await expect.poll(() => fixture.config().gameSettings.levels[0].cardGroupIds).toEqual(['everyday'])
   await page.goto('/')
   await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
-  await page.getByTitle('重新开始本关').click()
-  await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
-  await expect(page.locator('.board-arena .game-card').filter({ hasText: '救场专用' }).first()).toBeVisible()
+  const groups = await page.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.game.defs.map((card: any) => card.groupId))
+  expect(new Set(groups)).toEqual(new Set(['everyday']))
+  await page.locator('.board-arena .is-clickable').first().click()
+  await page.getByRole('button', { name: /召唤男友卡/ }).click()
+  await expect(page.getByTestId('rescue-photo-name')).toHaveText('救场专用')
 })
 
 test('invalid uploads keep the previous photo and restore returns to the preset', async ({ page }) => {

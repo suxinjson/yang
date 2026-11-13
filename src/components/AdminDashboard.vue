@@ -15,24 +15,30 @@
         <main class="admin-content">
           <RuntimeAdmin v-if="activeTab === 'runtime'" />
           <ClientLogsPanel v-if="activeTab === 'logs'" />
-          <GameSettingsPanel ref="gamePanel" v-show="activeTab === 'game'" :settings="config.gameSettings" :busy="saveStatus === 'saving'" @save="saveGameSettings" />
+          <GameSettingsPanel ref="gamePanel" v-show="activeTab === 'game'" :settings="config.gameSettings" :groups="config.cardGroups" :cards="localCards" :busy="saveStatus === 'saving'" @save="saveGameSettings" />
           <div v-show="activeTab === 'photos'" class="space-y-8">
-            <CardSettingsPanel :cards="localCards" :text-mode="config.cardTextMode" :busy="bfUploading || cardUploading" @busy="cardUploading = $event" @update="updateCards" @text-mode="updateCardTextMode" />
-            <BoyfriendSettingsPanel :config="config" @update="updateBoyfriendConfig" @save="handleSave" @busy="bfUploading = $event" />
+            <CardSettingsPanel :cards="localCards" :groups="config.cardGroups" @groups="updateGroups" :text-mode="config.cardTextMode" :busy="bfUploading || cardUploading" @busy="cardUploading = $event" @update="updateCards" @text-mode="updateCardTextMode" />
+            <details><summary class="cursor-pointer text-sm text-slate-500">救场形象设置</summary><BoyfriendSettingsPanel :config="config" @update="updateBoyfriendConfig" @save="handleSave" @busy="bfUploading = $event" /></details>
           </div>
           <section v-if="activeTab === 'rules'" class="space-y-6">
             <h2 class="panel-title">心愿券设置</h2>
             <form class="admin-panel space-y-5" @submit.prevent="handleSave">
               <label class="admin-field">券名称<input v-model.trim="config.couponName" aria-label="券名称" maxlength="30" /></label>
               <div class="space-y-3">
-                <div class="flex justify-between gap-3 text-xs"><span>女方任务 {{ config.gfPenaltyRatio }}%</span><span>男方心愿 {{ 100 - config.gfPenaltyRatio }}%</span></div>
-                <input v-model.number="config.gfPenaltyRatio" type="range" min="0" max="100" step="5" aria-label="女方任务抽取比例" class="w-full accent-slate-700" />
+                <div class="flex justify-between gap-3 text-xs"><span>男友心愿 {{ config.gfPenaltyRatio }}%</span><span>女友心愿 {{ 100 - config.gfPenaltyRatio }}%</span></div>
+                <input v-model.number="config.gfPenaltyRatio" type="range" min="0" max="100" step="5" aria-label="男友心愿抽取比例" class="w-full accent-slate-700" />
               </div>
+              <h3 class="font-semibold">通关奖励</h3>
+              <label class="flex items-center gap-2 text-sm"><input v-model="config.rewardPolicy.simultaneous" type="checkbox" aria-label="共同获取道具" />共同获取道具</label>
+              <p class="text-xs leading-relaxed text-slate-500">{{ config.rewardPolicy.simultaneous ? '各道具分别按概率抽取，可同时获得多种。' : '最多获得一种道具。概率合计不足 100% 的部分为空奖。' }}心愿券单独抽取。</p>
+              <label v-for="rule in rewardFields" :key="rule.key" class="admin-field">{{ rule.label }} (%)<input v-model.number="config.rewardPolicy[rule.key]" :aria-label="rule.label" type="number" min="0" max="100" step="0.01" /></label>
+              <p v-if="!config.rewardPolicy.simultaneous && config.rewardPolicy.hintChance + config.rewardPolicy.rescueChance > 100" role="alert" class="text-xs text-red-600">关闭共同获取时，两种道具概率合计不能超过 100%。</p>
+              <p class="text-xs text-slate-500">道具进入个人背包，跨关卡保留。新身份只获得一次初始道具。</p>
               <button class="admin-primary" :disabled="saveStatus === 'saving'">保存心愿券设置</button>
             </form>
           </section>
-          <RewardPoolEditor v-if="activeTab === 'gf_tasks'" title="女方任务" :items="config.girlfriendTasks" :ratio="config.gfPenaltyRatio" target="girlfriend_pays" :busy="saveStatus === 'saving'" @update="items => updatePool('girlfriendTasks', items)" />
-          <RewardPoolEditor v-if="activeTab === 'bf_rewards'" title="男方心愿" :items="config.boyfriendRewards" :ratio="100 - config.gfPenaltyRatio" target="boyfriend_pays" :busy="saveStatus === 'saving'" @update="items => updatePool('boyfriendRewards', items)" />
+          <RewardPoolEditor v-if="activeTab === 'gf_tasks'" title="男友心愿" :items="config.girlfriendTasks" :ratio="config.gfPenaltyRatio" target="girlfriend_pays" :busy="saveStatus === 'saving'" @update="items => updatePool('girlfriendTasks', items)" />
+          <RewardPoolEditor v-if="activeTab === 'bf_rewards'" title="女友心愿" :items="config.boyfriendRewards" :ratio="100 - config.gfPenaltyRatio" target="boyfriend_pays" :busy="saveStatus === 'saving'" @update="items => updatePool('boyfriendRewards', items)" />
           <AdminSecurityPanel v-if="activeTab === 'security'" />
           <div v-if="remoteConflict" role="alert" class="mt-5 rounded-xl bg-amber-50 p-4 text-xs text-amber-800">
             其他页面已更新配置，当前修改已保留。
@@ -50,7 +56,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { AdminConfig, CardDefinition, CardTextMode, GameSettings, TaskItem } from '../types/game'
+import type { AdminConfig, CardDefinition, CardTextMode, GameSettings, TaskItem, CardGroup } from '../types/game'
 import { loadAdminConfig, saveAdminConfig } from '../utils/adminConfig'
 import { apiLogin, getAdminToken, setAdminToken } from '../utils/api'
 import { DEFAULT_CARD_DEFINITIONS } from '../../shared/cardDefinitions.js'
@@ -81,14 +87,15 @@ const loginError = ref(''), loggingIn = ref(false)
 const activeTab = ref<'game' | 'photos' | 'rules' | 'gf_tasks' | 'bf_rewards' | 'security' | 'logs' | 'runtime'>('game')
 
 const tabs = [
-  { id: 'runtime', label: '运行与全局账本' }, { id: 'game', label: '关卡与布局' }, { id: 'photos', label: '卡牌种类与图片' },
-  { id: 'rules', label: '心愿券设置' }, { id: 'gf_tasks', label: '女方任务' }, { id: 'bf_rewards', label: '男方心愿' },
+  { id: 'runtime', label: '运行与个人背包' }, { id: 'game', label: '关卡与布局' }, { id: 'photos', label: '卡牌种类与图片' },
+  { id: 'rules', label: '心愿券设置' }, { id: 'gf_tasks', label: '男友心愿' }, { id: 'bf_rewards', label: '女友心愿' },
   { id: 'logs', label: '客户端日志' }, { id: 'security', label: '密码安全' }
 ] as const
 const configTab = computed(() => !['runtime', 'logs', 'security'].includes(activeTab.value))
 
 // Config
 const config = ref<AdminConfig>(loadAdminConfig())
+const rewardFields = [{ key: 'hintChance', label: '透视卡获得概率' }, { key: 'rescueChance', label: '召唤男友卡获得概率' }, { key: 'couponChance', label: '心愿券获得概率' }] as const
 const bfUploading = ref(false)
 const gamePanel = ref<InstanceType<typeof GameSettingsPanel> | null>(null)
 const saveStatus = ref<'idle' | 'saving' | 'synced' | 'failed'>('idle')
@@ -138,6 +145,11 @@ watch(() => props.cardDefs, (newDefs) => {
   }
 })
 
+function updateGroups(groups: CardGroup[]) {
+  config.value.cardGroups = groups
+  config.value.gameSettings.levels.forEach(level => { if (level.cardGroupIds) { level.cardGroupIds = level.cardGroupIds.filter(id => groups.some(group => group.id === id)); if (!level.cardGroupIds.length) delete level.cardGroupIds } })
+  void handleSave()
+}
 function updateCards(cards: CardDefinition[]) { localCards.value = cards; config.value.customCards = cards; void handleSave() }
 function updateCardTextMode(mode: CardTextMode) { config.value.cardTextMode = mode; void handleSave() }
 function updatePool(key: 'girlfriendTasks' | 'boyfriendRewards', items: TaskItem[]) { config.value[key] = items; void handleSave() }

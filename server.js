@@ -9,6 +9,10 @@ import { normalizeGameSettings, normalizeCardTextMode } from './shared/gameConfi
 import { normalizeBoyfriendSettings } from './shared/boyfriendConfig.js'
 import { registerClientRoutes } from './shared/clientAudit.js'
 import { registerGameplay } from './shared/gameplayServer.js'
+import { registerPlatformRoutes } from './shared/platformServer.js'
+import { normalizeCardCatalog } from './shared/cardGroups.js'
+import { normalizeRewardPolicy } from './shared/inventory.js'
+import { openStateRepository, createSerialExecutor } from './shared/stateRepository.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -36,7 +40,7 @@ const syncEpoch = crypto.randomUUID()
 let stateRevision = 0
 function getServerState() {
   const config = publicConfig(loadServerConfig())
-  return { epoch: syncEpoch, revision: stateRevision, configVersion: crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex'), config, coupons: loadServerCoupons() }
+  return { epoch: syncEpoch, revision: stateRevision, configVersion: crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex'), config, coupons: publicCoupons() }
 }
 
 const DEFAULT_CONFIG = { ...defaultPublicConfig(), adminPassword: 'admin' }
@@ -60,7 +64,7 @@ function loadServerConfig() {
   if (fs.existsSync(configFilePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'))
-      return { ...DEFAULT_CONFIG, ...data, ...normalizeBoyfriendSettings(data), gameSettings: normalizeGameSettings(data?.gameSettings) }
+      return { ...DEFAULT_CONFIG, ...data, ...normalizeBoyfriendSettings(data), ...normalizeCardCatalog(data), rewardPolicy: normalizeRewardPolicy(data.rewardPolicy), gameSettings: normalizeGameSettings(data?.gameSettings) }
     } catch (e) { console.error('Failed to read config file', e); throw e }
   }
   atomicWriteJson(configFilePath, DEFAULT_CONFIG)
@@ -73,7 +77,7 @@ function saveServerConfig(cfg) {
   gameplay?.broadcastState(getServerState())
 }
 
-function loadCouponLedger() {
+function loadLegacyLedger() {
   if (fs.existsSync(couponsFilePath)) {
     try {
       const ledger = JSON.parse(fs.readFileSync(couponsFilePath, 'utf-8'))
@@ -114,12 +118,25 @@ function loadCouponLedger() {
   return ledger
 }
 
+const repository = await openStateRepository(dataDir, loadLegacyLedger, atomicWriteJson)
+const runExclusive = createSerialExecutor()
+function loadCouponLedger() { return repository.load() }
 function loadServerCoupons() { return loadCouponLedger().coupons }
+function publicCoupons() { return loadServerCoupons().filter(coupon => !coupon.ownerId) }
+// Legacy coupon routes participate in the same transaction queue as gameplay.
+app.use(['/api/coupons', '/api/client/coupons/draw'], (req, res, next) => {
+  if (req.method !== 'POST') return next()
+  void runExclusive(() => new Promise(resolve => { res.once('finish', resolve); res.once('close', resolve); next() })).catch(next)
+})
 let couponFingerprint
-function saveCouponLedger(ledger, notify = true) {
+async function saveCouponLedger(ledger, notify = true) {
   const previous = couponFingerprint ?? JSON.stringify(loadCouponLedger().coupons)
-  atomicWriteJson(couponsFilePath, ledger)
+  await repository.save(ledger)
   couponFingerprint = JSON.stringify(ledger.coupons)
+  if (notify) {
+    try { gameplay?.broadcastBackpacks(ledger) }
+    catch (error) { console.error('Committed backpack notification failed:', error.message) }
+  }
   if (previous !== couponFingerprint) {
     stateRevision++
     if (notify) {
@@ -128,8 +145,8 @@ function saveCouponLedger(ledger, notify = true) {
     }
   }
 }
-function saveServerCoupons(list) {
-  saveCouponLedger({ ...loadCouponLedger(), coupons: list })
+async function saveServerCoupons(list) {
+  await saveCouponLedger({ ...loadCouponLedger(), coupons: list })
 }
 
 // Active Admin Session Tokens: token -> expireTimestamp
@@ -170,14 +187,15 @@ const loginAttempts = new Map()
 registerClientRoutes(app, {
   dataDir, requireAdminAuth,
   getConfig: () => publicConfig(loadServerConfig()),
-  getCoupons: loadServerCoupons,
+  getCoupons: publicCoupons,
   saveCoupons: saveServerCoupons,
   getState: getServerState, getCouponLedger: loadCouponLedger, saveCouponLedger,
   getTransactions: params => gameplay?.queryTransactions(params) || [],
   journal: (...args) => gameplay?.journal(...args), identity: (...args) => gameplay?.identity(...args)
 })
 gameplay = registerGameplay(app, { getConfig: () => publicConfig(loadServerConfig()), getState: getServerState,
-  getLedger: loadCouponLedger, saveLedger: saveCouponLedger, requireAdminAuth })
+  getLedger: loadCouponLedger, saveLedger: saveCouponLedger, requireAdminAuth, runExclusive })
+registerPlatformRoutes(app, { runExclusive, getLedger: loadCouponLedger, saveLedger: saveCouponLedger })
 app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next() })
 
 // 0. Health Check for CI/CD & Caddy probe
@@ -267,7 +285,7 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
     return res.status(400).json({ error: 'Invalid config' })
   }
   const current = loadServerConfig()
-  const allowedKeys = ['cardTextMode', 'bfPhotoIndex', 'couponName', 'gfPenaltyRatio', 'activeCardPhotos', 'customCards', 'girlfriendTasks', 'boyfriendRewards']
+  const allowedKeys = ['cardTextMode', 'bfPhotoIndex', 'couponName', 'gfPenaltyRatio', 'activeCardPhotos', 'customCards', 'cardGroups', 'rewardPolicy', 'girlfriendTasks', 'boyfriendRewards']
   const patch = Object.fromEntries(allowedKeys.filter(key => Object.hasOwn(newConfig, key)).map(key => [key, newConfig[key]]))
   if (Object.hasOwn(patch, 'customCards') && (!Array.isArray(patch.customCards) || patch.customCards.length < 3 || patch.customCards.some(card => !card || typeof card.id !== 'string' || typeof card.name !== 'string') || new Set(patch.customCards.map(card => card.id)).size !== patch.customCards.length)) {
     return res.status(400).json({ success: false, error: '至少保留三种有效且不重复的卡牌' })
@@ -285,20 +303,28 @@ app.post('/api/config', requireAdminAuth, (req, res) => {
   if (Object.hasOwn(patch, 'couponName')) patch.couponName = typeof patch.couponName === 'string' ? patch.couponName.trim().slice(0, 30) || '专属心愿券' : current.couponName
   if (Object.hasOwn(patch, 'cardTextMode')) patch.cardTextMode = normalizeCardTextMode(patch.cardTextMode)
   const boyfriendPatch = Object.fromEntries(['bfPhotos', 'bfCardEnabled'].filter(key => Object.hasOwn(newConfig, key)).map(key => [key, newConfig[key]]))
-  const merged = { ...current, ...patch, ...normalizeBoyfriendSettings({ ...current, ...boyfriendPatch }), gameSettings: Object.hasOwn(newConfig, 'gameSettings') ? normalizeGameSettings(newConfig.gameSettings) : current.gameSettings }
+  if (patch.cardGroups && (!Array.isArray(patch.cardGroups) || !patch.cardGroups.length || patch.cardGroups.some(group => !group || !/^[a-zA-Z0-9_-]{1,100}$/.test(group.id) || typeof group.name !== 'string' || !group.name.trim()) || new Set(patch.cardGroups.map(group => group.id)).size !== patch.cardGroups.length)) return res.status(400).json({ error: '卡片分组格式无效' })
+  if (patch.rewardPolicy && (['hintChance', 'rescueChance', 'couponChance'].some(key => typeof patch.rewardPolicy[key] !== 'number' || !Number.isFinite(patch.rewardPolicy[key]) || patch.rewardPolicy[key] < 0 || patch.rewardPolicy[key] > 100) || typeof patch.rewardPolicy.simultaneous !== 'boolean')) return res.status(400).json({ error: '奖励概率应为 0–100%' })
+  const policy = normalizeRewardPolicy(patch.rewardPolicy || current.rewardPolicy)
+  if (!policy.simultaneous && policy.hintChance + policy.rescueChance > 100) return res.status(400).json({ error: '仅获得一种道具时，概率合计不能超过 100%' })
+  const catalog = normalizeCardCatalog({ ...current, ...patch })
+  const configuredLevels = normalizeGameSettings(newConfig.gameSettings || current.gameSettings)
+  if (configuredLevels.levels.some(level => Array.isArray(level.cardGroupIds) && !catalog.customCards.some(card => level.cardGroupIds.includes(card.groupId)))) return res.status(400).json({ error: '每关至少选择一个有卡片的分组' })
+  const merged = { ...current, ...patch, ...catalog, rewardPolicy: policy, ...normalizeBoyfriendSettings({ ...current, ...boyfriendPatch }), gameSettings: Object.hasOwn(newConfig, 'gameSettings') ? normalizeGameSettings(newConfig.gameSettings) : current.gameSettings }
   saveServerConfig(merged)
   res.json({ success: true, config: publicConfig(merged), state: getServerState() })
 })
 
 // 4. Get Coupons List
 app.get('/api/coupons', (req, res) => {
-  const list = loadServerCoupons()
+  const list = publicCoupons()
   res.json(list)
 })
 
 // 5. Add / Draw New Coupon
-app.post('/api/coupons', requireAdminAuth, (req, res) => {
-  const coupon = req.body
+app.post('/api/coupons', requireAdminAuth, async (req, res) => {
+  const input = req.body
+  const coupon = input && typeof input === 'object' ? Object.fromEntries(['id', 'title', 'desc', 'icon', 'used', 'target', 'obtainedAt', 'obtainedTime', 'ownerId'].filter(key => Object.hasOwn(input, key)).map(key => [key, input[key]])) : null
   if (!coupon || typeof coupon.id !== 'string' || typeof coupon.title !== 'string' || typeof coupon.used !== 'boolean') {
     return res.status(400).json({ error: 'Invalid coupon' })
   }
@@ -307,20 +333,23 @@ app.post('/api/coupons', requireAdminAuth, (req, res) => {
   if (existing) return res.json({ success: true, list, state: getServerState() })
   const receipt = `legacy_grant_${coupon.id}`
   if (ledger.operations[receipt]) return res.status(409).json({ error: '该发券请求已处理或已作废，请使用新的券编号', state: getServerState() })
+  if (coupon.ownerId && !ledger.profiles?.[coupon.ownerId]) return res.status(400).json({ error: '个人身份不存在' })
+  if (coupon.ownerId) ledger.profiles[coupon.ownerId].revision++
   list.unshift(coupon)
   ledger.operations[receipt] = { at: new Date().toISOString() }
   ledger.coupons = list; ledger.transactions ||= []
   gameplay.journal(ledger, 'coupon_gain', { ...gameplay.identity(req, req.body), source: 'admin_web' }, { couponId: coupon.id, source: 'admin_grant' })
-  saveCouponLedger(ledger)
+  await saveCouponLedger(ledger)
   res.json({ success: true, list, state: getServerState() })
 })
 
 // 6. Redeem / Mark Coupon Used
-app.post('/api/coupons/redeem', (req, res) => {
+app.post('/api/coupons/redeem', async (req, res) => {
   const { id, requireUnused } = req.body
   const list = loadServerCoupons()
   const target = list.find(c => c.id === id)
   if (target) {
+    if (target.ownerId) return res.status(403).json({ error: '请通过个人背包兑现此券' })
     if (requireUnused === true && target.used) return res.status(409).json({ success: false, error: 'Coupon already redeemed', state: getServerState() })
     if (!target.used) {
       target.used = true
@@ -329,19 +358,20 @@ app.post('/api/coupons/redeem', (req, res) => {
       ledger.coupons = list
       ledger.transactions ||= []
       gameplay.journal(ledger, 'coupon_use', gameplay.identity(req, req.body), { couponId: id, purpose: 'redeem' })
-      saveCouponLedger(ledger)
+      await saveCouponLedger(ledger)
     }
-    return res.json({ success: true, list, state: getServerState() })
+    return res.json({ success: true, list: publicCoupons(), state: getServerState() })
   }
   res.status(404).json({ error: 'Coupon not found' })
 })
 
 // 7. Clear All Coupons (Admin only - Protected)
-app.post('/api/coupons/reset', requireAdminAuth, (req, res) => {
+app.post('/api/coupons/reset', requireAdminAuth, async (req, res) => {
   const ledger = loadCouponLedger()
+  for (const owner of new Set(ledger.coupons.map(coupon => coupon.ownerId).filter(Boolean))) if (ledger.profiles?.[owner]) ledger.profiles[owner].revision++
   ledger.coupons = []; ledger.transactions ||= []
   gameplay.journal(ledger, 'coupon_reset', { ...gameplay.identity(req, req.body), source: 'admin_web' })
-  saveCouponLedger(ledger)
+  await saveCouponLedger(ledger)
   res.json({ success: true, list: [], state: getServerState() })
 })
 
@@ -426,8 +456,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`钢了钢服务已启动，端口 ${PORT}，管理后台 /admin`)
 })
 gameplay.attach(server)
-for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
-  try { gameplay.flush() } catch (error) { console.error('Room checkpoint failed', error.message) }
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, async () => {
+  try { await gameplay.flush(); await repository.close() } catch (error) { console.error('Room checkpoint failed', error.message) }
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(0), 2000).unref()
 })

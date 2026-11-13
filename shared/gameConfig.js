@@ -1,3 +1,4 @@
+import { LAYOUTS, shapeColumns } from './layoutCatalog.js'
 // One set of defaults and bounds for the browser and the Node server.
 export const CARD_GEOMETRY = Object.freeze({ padding: 12, cardWidth: 54, cardHeight: 64, stepX: 58, stepY: 68 })
 
@@ -18,13 +19,13 @@ export function defaultGameSettings() {
     totalLevels: 3,
     levels: [
       { minCards: 18, maxCards: 24, types: 3, layers: 2, spreadX: 100, spreadY: 100, randomness: 65, layout: 'scatter', solvability: 'guaranteed' },
-      { minCards: 90, maxCards: 108, types: 7, layers: 4, spreadX: 100, spreadY: 100, randomness: 80, layout: 'scatter', solvability: 'guaranteed' },
-      { minCards: 120, maxCards: 144, types: 8, layers: 6, spreadX: 100, spreadY: 100, randomness: 80, layout: 'heart', solvability: 'guaranteed' }
+      { minCards: 90, maxCards: 108, types: 7, layers: 4, spreadX: 100, spreadY: 100, randomness: 80, layout: 'scatter', solvability: 'hard' },
+      { minCards: 120, maxCards: 144, types: 8, layers: 6, spreadX: 100, spreadY: 100, randomness: 80, layout: 'heart', solvability: 'hard' }
     ]
   }
 }
 
-function integer(value, fallback, min, max) {
+function integer(value, fallback, min, max = Number.MAX_SAFE_INTEGER) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.max(min, Math.min(max, Math.round(value)))
 }
@@ -33,7 +34,7 @@ function record(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 }
 
-// This grid is also used by generation, so capacity checks cannot drift.
+// A layer's capacity determines how many layers a deal needs, not its card limit.
 export function layoutGrid(settings, level) {
   const cardWidth = (settings && typeof settings.cardWidth === 'number' && Number.isFinite(settings.cardWidth)) ? settings.cardWidth : CARD_GEOMETRY.cardWidth
   const cardHeight = (settings && typeof settings.cardHeight === 'number' && Number.isFinite(settings.cardHeight)) ? settings.cardHeight : CARD_GEOMETRY.cardHeight
@@ -44,11 +45,11 @@ export function layoutGrid(settings, level) {
   const maxY = (settings.boardHeight - padding * 2 - cardHeight) / stepY
   const spanX = maxX * level.spreadX / 100
   const spanY = maxY * level.spreadY / 100
-  const columns = Math.max(2, Math.floor((spanX - 0.32) / 1.06) + 1)
-  const rows = Math.max(3, Math.floor((spanY - 0.24) / 1.06) + 1)
+  const columns = Math.max(1, Math.floor((spanX - 0.32) / 1.06) + 1)
+  const rows = Math.max(1, Math.floor((spanY - 0.24) / 1.06) + 1)
   const rowCounts = Array.from({ length: rows }, (_, row) => {
-    if (level.layout !== 'heart') return columns
-    if (row === 0) return Math.max(2, Math.floor((columns - 2) / 2) * 2)
+    if (level.layout !== 'heart') return shapeColumns(level.layout, columns, rows, row).length
+    if (row === 0) return Math.min(columns, Math.max(2, Math.floor((columns - 2) / 2) * 2))
     if (row <= Math.ceil(rows * 0.3)) return columns
     return Math.max(1, Math.round(columns * (rows - 1 - row) / Math.max(1, rows * 0.65)))
   })
@@ -81,8 +82,8 @@ export function normalizeGameSettings(input) {
 
   const validLevelArray = Array.isArray(raw.levels) ? raw.levels : null
   const explicitCount = (typeof raw.totalLevels === 'number' && Number.isFinite(raw.totalLevels))
-    ? integer(raw.totalLevels, 3, 1, 5)
-    : (validLevelArray && validLevelArray.length > 3 ? Math.min(5, validLevelArray.length) : 3)
+    ? integer(raw.totalLevels, 3, 1)
+    : (validLevelArray && validLevelArray.length > 3 ? validLevelArray.length : 3)
   settings.totalLevels = explicitCount
 
   const allowedSolvabilities = ['guaranteed', 'normal', 'hard', 'impossible']
@@ -100,15 +101,26 @@ export function normalizeGameSettings(input) {
       spreadX: integer(entry.spreadX, fallback.spreadX, 60, 100),
       spreadY: integer(entry.spreadY, fallback.spreadY, 60, 100),
       randomness: integer(entry.randomness, fallback.randomness, 0, 100),
-      layout: entry.layout === 'scatter' || entry.layout === 'heart' ? entry.layout : fallback.layout,
+      layout: LAYOUTS.some(layout => layout.id === entry.layout) ? entry.layout : fallback.layout,
+      ...(Array.isArray(entry.cardGroupIds) ? { cardGroupIds: [...new Set(entry.cardGroupIds.filter(id => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(id)))] } : {}),
       solvability
     }
-    const capacity = Math.min(240, Math.floor(layoutGrid(settings, level).capacity * level.layers / 3) * 3)
-    const first = Math.floor(integer(entry.minCards, fallback.minCards, 6, capacity) / 3) * 3
-    const last = Math.floor(integer(entry.maxCards, fallback.maxCards, 6, capacity) / 3) * 3
-    level.minCards = Math.min(first, last, capacity)
-    level.maxCards = Math.min(Math.max(first, last), capacity)
+    const first = integer(entry.minCards, fallback.minCards, 6)
+    const last = integer(entry.maxCards, fallback.maxCards, 6)
+    level.minCards = Math.min(first, last)
+    level.maxCards = Math.max(first, last)
     return level
   })
   return settings
+}
+
+export function cardCountWarning(level) {
+  const { minCards, maxCards } = level
+  if (!Number.isSafeInteger(minCards) || !Number.isSafeInteger(maxCards) || minCards < 6 || maxCards < 6) return '卡片张数需填写至少 6 张的整数。'
+  if (minCards > maxCards) return '最少张数不能大于最多张数。'
+  if (minCards === maxCards && minCards % 3) {
+    return `${minCards} 张不是 3 的倍数，严格三消无法全部消除。建议设置为 ${Math.max(6, Math.floor(minCards / 3) * 3)} 或 ${Math.ceil(minCards / 3) * 3} 张。`
+  }
+  if (Math.ceil(minCards / 3) > Math.floor(maxCards / 3)) return `${minCards}–${maxCards} 张范围内没有 3 的倍数，无法全部消除。请将范围扩大到 ${Math.max(6, Math.floor(minCards / 3) * 3)} 或 ${Math.ceil(maxCards / 3) * 3} 张。`
+  return ''
 }

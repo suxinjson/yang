@@ -21,8 +21,8 @@ test('old, partial and malformed settings normalize without mutating defaults', 
   expect(fixed.boardHeight).toBe(640)
   expect(fixed.levels[0].layers).toBe(1)
   expect(fixed.levels[0].spreadX).toBe(60)
-  expect(fixed.levels[0].minCards).toBe(6)
-  expect(fixed.levels[0].maxCards % 3).toBe(0)
+  expect(fixed.levels[0].minCards).toBe(7)
+  expect(fixed.levels[0].maxCards).toBe(99)
   expect(normalizeGameSettings(fixed)).toEqual(fixed)
   fixed.levels[0].types = 10
   expect(defaultGameSettings()).toEqual(initial)
@@ -85,7 +85,7 @@ test('impossible solvability mode creates unmatchable cards', () => {
   expect(hasOrphan).toBe(true)
 })
 
-test('totalLevels supports 1 to 5 levels and initializes accordingly', () => {
+test('explicit totalLevels initializes the requested levels, including a single level', () => {
   const fiveLevelSettings = normalizeGameSettings({
     totalLevels: 5,
     levels: [

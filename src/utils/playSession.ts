@@ -3,6 +3,7 @@ import type { GameState, GameAction } from '../../shared/gameEngine.js'
 import { getBaseUrl } from './api'
 import { clientIdentity, operationError } from './clientSession'
 import { acceptServerState } from './serverState'
+import { ensureProfile, profileCredentials, acceptBackpack } from './backpack'
 
 export interface RoomInfo { id: string; code: string; revision: number; epoch: string; members: number; connected: number; expiresAt: number }
 export const playMode = ref<'solo' | 'couple'>('solo')
@@ -17,9 +18,11 @@ let pending: { type: string; operationId: string; revision: number; roundId: str
 let sentPending = false
 
 export async function playPost(path: string, body: Record<string, unknown>, timeoutMs = 8000) {
+  await ensureProfile()
   const response = await fetch(getBaseUrl() + '/api/play/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...clientIdentity(), ...body }), signal: AbortSignal.timeout(timeoutMs) })
+    body: JSON.stringify({ ...clientIdentity(), ...body, ...profileCredentials() }), signal: AbortSignal.timeout(timeoutMs) })
   const data = await response.json()
+  if (data.backpack) acceptBackpack(data.backpack)
   if (data.state) acceptServerState(data.state)
   if (!response.ok) throw Object.assign(new Error(data.error || '服务暂不可用，请重试'), { status: response.status })
   if (data.serverNow) serverOffset.value = data.serverNow - Date.now()
@@ -48,7 +51,7 @@ function connect() {
   if (timeout) clearTimeout(timeout)
   roomConnection.value = 'connecting'; sentPending = false
   const url = new URL(getBaseUrl() + '/api/play/socket'); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  const auth = { ...credentials }
+  const auth = { ...credentials, ...profileCredentials() }
   const current = new WebSocket(url); socket = current
   timeout = setTimeout(() => current.close(), 8000)
   current.onopen = () => { if (socket === current && !stopped) current.send(JSON.stringify({ type: 'auth', ...auth })); else current.close() }
@@ -56,6 +59,7 @@ function connect() {
     if (socket !== current || stopped) return
     try {
       const data = JSON.parse(event.data)
+      if (data.backpack) acceptBackpack(data.backpack)
       if (data.state) acceptServerState(data.state)
       if (data.serverNow) serverOffset.value = data.serverNow - Date.now()
       if (data.type === 'ended') { stopRoom(); operationError.value = data.error; return }

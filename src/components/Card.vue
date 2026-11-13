@@ -56,7 +56,7 @@
     <!-- Covered Mask (Dark overlay when covered by upper layers) -->
     <div
       v-if="card.isCovered && card.status === 'board'"
-      class="covered-mask absolute inset-0 rounded-xl bg-gray-900/45 backdrop-blur-[0.5px] pointer-events-none transition-opacity duration-200"
+      class="covered-mask absolute inset-0 rounded-xl bg-gray-900/45 pointer-events-none transition-opacity duration-200"
     ></div>
   </div>
 </template>
@@ -150,7 +150,6 @@ function handleClick() {
 .card-media-box :deep(svg) { width: 100%; height: 100%; }
 
 .is-covered .card-inner {
-  filter: brightness(0.65) grayscale(0.28);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 

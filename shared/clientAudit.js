@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { LIFECYCLE_EVENTS, logMatches } from './logRules.js'
 
 const EVENTS = new Set(['round_start', 'round_end', 'prop_gain', 'prop_use', 'win', 'lose', 'client_error'])
 const ID = /^[a-zA-Z0-9_-]{8,80}$/
@@ -22,10 +23,18 @@ export function createAuditStore(directory) {
     }
   }
   prune()
+  const lifecycleReceipts = new Map()
+  for (const name of files()) {
+    for (const line of fs.readFileSync(path.join(directory, name), 'utf8').split('\n')) {
+      try { const row = JSON.parse(line); if (LIFECYCLE_EVENTS.has(row.event) && row.eventId) lifecycleReceipts.set(`${row.deviceId}:${row.eventId}`, { id: row.id, at: row.at }) } catch { /* Skip partial legacy lines. */ }
+    }
+  }
   let lastPrune = Date.now()
   function append(event, fields = {}) {
+    const receiptKey = LIFECYCLE_EVENTS.has(event) && fields.eventId ? `${fields.deviceId}:${fields.eventId}` : null
+    if (receiptKey && lifecycleReceipts.has(receiptKey)) return { id: lifecycleReceipts.get(receiptKey).id }
     const now = new Date().toISOString()
-    const day = now.slice(0, 10)
+    const day = (fields.at || now).slice(0, 10)
     const today = files().filter(name => name.startsWith(day))
     let index = today.length ? Number(today.at(-1).slice(11, 15)) : 0
     let file = path.join(directory, `${day}-${String(index).padStart(4, '0')}.jsonl`)
@@ -39,7 +48,11 @@ export function createAuditStore(directory) {
       fs.writeFileSync(fd, JSON.stringify(row) + '\n')
       fs.fsyncSync(fd)
     } finally { fs.closeSync(fd) }
-    if (Date.now() - lastPrune > 60000) { prune(); lastPrune = Date.now() }
+    if (receiptKey) lifecycleReceipts.set(receiptKey, { id: row.id, at: row.at })
+    if (Date.now() - lastPrune > 60000) {
+      prune(); lastPrune = Date.now()
+      for (const [key, receipt] of lifecycleReceipts) if (Date.parse(receipt.at) < Date.now() - 30 * 86400000) lifecycleReceipts.delete(key)
+    }
     return row
   }
   async function query(params) {
@@ -57,17 +70,14 @@ export function createAuditStore(directory) {
     const rows = []
     const compare = (a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id)
     for (const name of files().reverse()) {
-      if ((from && name.slice(0, 10) < from) || (to && name.slice(0, 10) > to)) continue
+      if (!Number(params.timezoneOffset) && ((from && name.slice(0, 10) < from) || (to && name.slice(0, 10) > to))) continue
       let content
       try { content = await fs.promises.readFile(path.join(directory, name), 'utf8') } catch (error) { if (error.code === 'ENOENT') continue; throw error }
       for (const line of content.trim().split('\n')) {
         let row
         try { row = JSON.parse(line) } catch { continue }
         if (before && (row.at > before[0] || (row.at === before[0] && row.id >= before[1]))) continue
-        if (params.deviceId && row.deviceId !== params.deviceId) continue
-        if (params.sessionId && row.sessionId !== params.sessionId) continue
-        if (params.source && row.source !== params.source) continue
-        if (params.event && row.event !== params.event) continue
+        if (!logMatches(row, params)) continue
         rows.push(row)
       }
       // Read other segments sharing the same date before truncation, keeping stable timestamp ordering.
@@ -112,6 +122,31 @@ export function registerClientRoutes(app, { dataDir, requireAdminAuth, getConfig
     return { deviceId: s.deviceId, sessionId: s.id, platform: s.platform, source: s.platform === 'android' ? 'android_app' : s.platform === 'ios' ? 'ios_app' : 'web', version: s.version, ip: text(req.ip, 80), device: text(req.headers['user-agent'], 240) }
   }
   app.use('/api/client', rate)
+  // Lifecycle reports grant no game or coupon authority. A persisted event ID
+  // makes offline retries safe even after a server restart or an unobserved close.
+  app.post('/api/client/lifecycle', (req, res) => {
+    const reports = req.body?.reports
+    if (!Array.isArray(reports) || reports.length < 1 || reports.length > 20) return res.status(400).json({ error: '启动记录格式无效' })
+    const cleanReports = []
+    for (const report of reports) {
+      if (!report || !ID.test(report.deviceId || '') || !ID.test(report.sessionId || '') || !ID.test(report.eventId || '') ||
+        ![report.deviceId, report.sessionId, report.eventId].every(value => typeof value === 'string' && !Object.hasOwn(Object.prototype, value) && value !== '__proto__') ||
+        !LIFECYCLE_EVENTS.has(report.event) || !['android', 'ios', 'web'].includes(report.platform)) return res.status(400).json({ error: '启动记录参数无效' })
+      const occurred = Date.parse(report.at)
+      if (!Number.isFinite(occurred) || occurred > Date.now() + 300000 || occurred < Date.now() - 30 * 86400000) return res.status(400).json({ error: '记录时间无效' })
+      const details = {}
+      for (const key of ['elapsedMs', 'foregroundMs', 'backgroundMs']) {
+        const value = report.details?.[key]
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 30 * 86400000) details[key] = Math.round(value)
+      }
+      if (['visibility', 'native_state', 'back_button', 'pagehide', 'launch'].includes(report.details?.reason)) details.reason = report.details.reason
+      cleanReports.push({ event: report.event, eventId: report.eventId, at: new Date(occurred).toISOString(), deviceId: report.deviceId,
+        sessionId: report.sessionId, platform: report.platform, version: text(report.version, 30), source: report.platform === 'android' ? 'android_app' : report.platform === 'ios' ? 'ios_app' : 'web',
+        ip: text(req.ip || req.socket.remoteAddress, 80), device: text(req.headers['user-agent'], 240), receivedAt: new Date().toISOString(), details })
+    }
+    const ids = cleanReports.map(({ event, ...fields }) => safeAppend(event, fields).id)
+    res.set('Cache-Control', 'no-store').json({ ok: true, ids })
+  })
   app.post('/api/client/session', (req, res) => {
     const { deviceId, platform, version } = req.body || {}
     if (typeof deviceId !== 'string' || !ID.test(deviceId)) return res.status(400).json({ error: '客户端标识无效' })
@@ -158,11 +193,12 @@ export function registerClientRoutes(app, { dataDir, requireAdminAuth, getConfig
     const id = `online_${deviceId}_${operationId}`
     const operations = ledger.operations
     const existing = list.find(coupon => coupon.id === id)
-    if (existing) return res.json({ coupon: existing, list, state: getState() })
+    if (existing?.ownerId) return res.status(403).json({ error: '请使用个人背包查看此券' })
+    if (existing) return res.json({ coupon: existing, list: list.filter(coupon => !coupon.ownerId), state: getState() })
     if (operations[id]) return res.status(409).json({ error: '该奖励操作已处理或已被管理员清空，请刷新存折', state: getState() })
     // Old clients may recover committed receipts, but cannot mint new global
     // coupons from an unverified context string. Gameplay rewards use round credentials.
-    return requireAdminAuth(req, res, () => {
+    return requireAdminAuth(req, res, async () => {
     const config = getConfig()
     const preferGf = crypto.randomInt(100) < config.gfPenaltyRatio
     const preferred = preferGf ? config.girlfriendTasks : config.boyfriendRewards
@@ -175,8 +211,8 @@ export function registerClientRoutes(app, { dataDir, requireAdminAuth, getConfig
     // Commit the reward and idempotency key in one durable atomic write, including across reset/restart.
     operations[id] = { at: new Date().toISOString() }
     list.unshift(coupon)
-    saveCouponLedger(ledger)
-    res.json({ coupon, list, state: getState() })
+    await saveCouponLedger(ledger)
+    res.json({ coupon, list: list.filter(coupon => !coupon.ownerId), state: getState() })
     })
   }
   app.post('/api/client/coupons/draw', requireSession, draw)

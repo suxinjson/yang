@@ -1,10 +1,7 @@
 <template>
   <section class="admin-panel space-y-4" data-testid="boyfriend-settings">
-    <h2 class="panel-title">男友帅照</h2>
-    <label class="flex gap-2 items-center font-bold text-slate-800">
-      <input type="checkbox" :checked="config.bfCardEnabled" :disabled="uploading" aria-label="男友帅照加入叠叠卡牌" @change="toggleDeck" />
-      加入叠叠卡牌
-    </label>
+    <h2 class="panel-title">救场形象</h2>
+    <p class="text-xs text-slate-500">只用于召唤救场展示。游戏卡片在上方分组中管理。</p>
     <label class="admin-field">
       使用哪张帅照
       <select :value="config.bfPhotoIndex" aria-label="使用哪张帅照" :disabled="uploading" @change="selectPhoto">
@@ -32,7 +29,7 @@
     </div>
     <p v-if="uploading" role="status" class="text-xs text-slate-500">正在处理照片…</p>
     <p v-if="error" role="alert" class="text-[11px] text-red-600">{{ error }}</p>
-    <button type="button" :disabled="uploading" class="admin-primary" @click="emit('save')">保存帅照配置</button>
+    <button type="button" :disabled="uploading" class="admin-primary" @click="emit('save')">保存救场形象</button>
   </section>
 </template>
 
@@ -60,11 +57,6 @@ function updatePhoto(index: number, patch: Partial<BoyfriendPhoto>) {
 
 function renamePhoto(index: number, event: Event) {
   updatePhoto(index, { name: (event.target as HTMLInputElement).value })
-}
-
-function toggleDeck(event: Event) {
-  emit('update', { bfCardEnabled: (event.target as HTMLInputElement).checked })
-  emit('save')
 }
 
 function selectPhoto(event: Event) {

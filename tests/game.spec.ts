@@ -104,8 +104,10 @@ test('removed duplicate powers stay absent and restart cancels an old eliminatio
     await page.locator(`.board-arena [data-card-id="${cards[index].id}"]`).click()
     if (await page.locator('.is-eliminating').count()) break
   }
-  await expect(page.getByRole('button', { name: /透视提示/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /透视卡/ })).toBeDisabled()
+  const previousId = await page.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.game.roundId)
   await page.getByTitle('重新开始本关').click()
+  await expect.poll(() => page.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.game.roundId)).not.toBe(previousId)
   const restarted = await page.locator('.board-arena .game-card').count()
   await page.clock.runFor(1000)
   await expect(page.locator('.board-arena .game-card')).toHaveCount(restarted)

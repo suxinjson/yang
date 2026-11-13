@@ -1,6 +1,8 @@
 <template>
   <section class="space-y-5">
     <header class="panel-heading"><h2>{{ title }}</h2><span>{{ items.length }} 项 · {{ ratio }}%</span></header>
+    <p class="text-xs text-slate-500">{{ target === 'girlfriend_pays' ? '男友选择，女友兑现或买单。' : '女友选择，男友兑现或买单。' }}</p>
+    <button type="button" class="admin-text" :disabled="busy || !missingDefaults.length" @click="emit('update', [...items, ...missingDefaults])">补充默认心愿</button>
     <form class="admin-panel space-y-3" @submit.prevent="add">
       <div class="grid grid-cols-[1fr_64px] gap-3">
         <label class="admin-field">名称<input v-model.trim="draft.title" aria-label="券名称" maxlength="80" required /></label>
@@ -22,11 +24,16 @@
   </section>
 </template>
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
+import { defaultWishPools } from '../../shared/wishPools.js'
 import type { CouponTarget, TaskItem } from '../types/game'
 const props = defineProps<{ title: string; items: TaskItem[]; ratio: number; target: CouponTarget; busy: boolean }>()
 const emit = defineEmits<{ (e: 'update', items: TaskItem[]): void }>()
 const draft = reactive({ title: '', desc: '', icon: '🎁' })
+const missingDefaults = computed(() => {
+  const defaults = defaultWishPools()
+  return (props.target === 'girlfriend_pays' ? defaults.girlfriendTasks : defaults.boyfriendRewards).filter(item => !props.items.some(current => current.id === item.id))
+})
 function add() {
   if (!draft.title.trim() || props.busy) return
   emit('update', [{ id: crypto.randomUUID(), title: draft.title.trim(), desc: draft.desc.trim(), icon: draft.icon || '🎁', target: props.target }, ...props.items])

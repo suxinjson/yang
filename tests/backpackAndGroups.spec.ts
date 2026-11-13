@@ -1,0 +1,80 @@
+import { test, expect } from '@playwright/test'
+import fs from 'node:fs'
+import path from 'node:path'
+import { backend } from './helpers/backend'
+
+test('admin creates an ordinary photo group, selects it per level, and uses ranked layouts', async ({ page }) => {
+  const server=await backend()
+  const config=()=>JSON.parse(fs.readFileSync(path.join(server.directory,'config.json'),'utf8'))
+  try{
+    await server.attach(page);await page.setViewportSize({width:390,height:900});await page.goto('/admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('admin');await page.getByRole('button',{name:'登录后台',exact:true}).click()
+    await page.getByRole('button',{name:'卡牌种类与图片',exact:true}).click()
+    await page.getByLabel('新分组名称').fill('情侣合照');await page.getByRole('button',{name:'添加分组',exact:true}).click()
+    await expect.poll(()=>config().cardGroups.some((group:any)=>group.name==='情侣合照')).toBe(true)
+    const groupId=config().cardGroups.find((group:any)=>group.name==='情侣合照').id
+    await page.getByRole('button',{name:'添加卡牌',exact:true}).click()
+    await page.getByLabel('新卡片分组').selectOption(groupId)
+    await page.getByLabel('新卡片名称').fill('夏日合照');await page.getByLabel('新卡片描述').fill('一起看海')
+    await page.getByRole('button',{name:'添加',exact:true}).click()
+    await expect.poll(()=>config().customCards.some((card:any)=>card.name==='夏日合照'&&card.groupId===groupId)).toBe(true)
+    await page.getByLabel('分组情侣合照名称').fill('我们的合照');await page.getByLabel('分组情侣合照名称').press('Tab')
+    await expect.poll(()=>config().cardGroups.find((group:any)=>group.id===groupId).name).toBe('我们的合照')
+    await page.getByRole('button',{name:'关卡与布局',exact:true}).click()
+    await page.getByLabel('第1关使用甜蜜日常',{exact:true}).uncheck();await page.getByLabel('第1关使用男友帅照',{exact:true}).uncheck()
+    await page.getByLabel('第1关摆放造型').selectOption('fortress')
+    await page.getByRole('button',{name:'保存全部配置',exact:true}).click()
+    await expect.poll(()=>config().gameSettings.levels[0].cardGroupIds).toEqual([groupId])
+    expect(config().gameSettings.levels[0].layout).toBe('fortress')
+    await page.screenshot({path:'artifacts/ui/group-settings-mobile.png',fullPage:true,animations:'disabled'})
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+    await page.goto('/')
+    await expect(page.locator('.board-arena')).toBeVisible()
+    await expect.poll(()=>page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__._instance.setupState.solo.practice)).toBe(false)
+    const defs=await page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__._instance.setupState.game.defs)
+    expect(defs.every((card:any)=>card.groupId===groupId)).toBe(true)
+    expect(defs.map((card:any)=>card.name)).toEqual(['夏日合照'])
+  }finally{await page.close();await server.close()}
+})
+test('one-of reward settings reject invalid totals and show a persistent personal backpack after a real win', async ({ page }) => {
+  const server=await backend()
+  const config=()=>JSON.parse(fs.readFileSync(path.join(server.directory,'config.json'),'utf8'))
+  try{
+    const admin=await server.login()
+    await server.post('/api/config',{gameSettings:{levels:[{minCards:6,maxCards:6,types:1}]}},admin)
+    await server.attach(page);await page.setViewportSize({width:390,height:844});await page.goto('/admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('admin');await page.getByRole('button',{name:'登录后台',exact:true}).click()
+    await page.getByRole('button',{name:'心愿券设置',exact:true}).click()
+    await page.getByLabel('共同获取道具').uncheck()
+    await page.getByLabel('透视卡获得概率',{exact:true}).fill('80');await page.getByLabel('召唤男友卡获得概率',{exact:true}).fill('80')
+    await expect(page.getByRole('alert')).toContainText('合计不能超过 100%')
+    await page.getByRole('button',{name:'保存心愿券设置',exact:true}).click()
+    await expect(page.getByText('保存失败，请重试',{exact:true})).toBeVisible()
+    expect(config().rewardPolicy.simultaneous).toBe(true)
+    await page.getByLabel('透视卡获得概率',{exact:true}).fill('70');await page.getByLabel('召唤男友卡获得概率',{exact:true}).fill('30');await page.getByLabel('心愿券获得概率',{exact:true}).fill('0')
+    await page.getByRole('button',{name:'保存心愿券设置',exact:true}).click()
+    await expect.poll(()=>config().rewardPolicy).toEqual({simultaneous:false,hintChance:70,rescueChance:30,couponChance:0})
+    await page.goto('/')
+    await expect(page.locator('.board-arena')).toBeVisible()
+    await expect.poll(()=>page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__._instance.setupState.solo.practice)).toBe(false)
+    for(let n=0;n<6;n++){
+      await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy','false')
+      await page.locator('.board-arena .is-clickable').first().click()
+    }
+    await expect(page.getByText('第 1 关顺利通关！')).toBeVisible()
+    await expect.poll(()=>page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__._instance.setupState.latestWonItems.length)).toBe(1)
+    await page.getByRole('button',{name:'查看我的背包',exact:true}).click()
+    await expect(page.getByRole('heading',{name:'我的背包',exact:true})).toBeVisible()
+    await expect(page.getByLabel('背包道具')).toContainText('透视卡')
+    await expect(page.getByLabel('背包道具')).toContainText('召唤男友卡')
+    const before=await page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__._instance.setupState.propsState)
+    expect(before.hint+before.rescue).toBe(4)
+    await page.screenshot({path:'artifacts/ui/backpack-mobile.png',fullPage:true,animations:'disabled'})
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+    await page.getByRole('button',{name:'关闭',exact:true}).click()
+    await page.getByRole('button',{name:'进入下一关！',exact:true}).click()
+    await expect.poll(()=>page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__._instance.setupState.game.phase)).toBe('playing')
+    expect(await page.evaluate(()=>(document.querySelector('#app') as any).__vue_app__._instance.setupState.propsState)).toEqual(before)
+  }finally{await page.close();await server.close()}
+})
+

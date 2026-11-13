@@ -2,7 +2,7 @@ import { createLevel, updateCardCoverage } from './levelGenerator.js'
 import { getBoardLayout } from './boardGeometry.js'
 import { normalizeGameSettings } from './gameConfig.js'
 import { normalizeBoyfriendSettings } from './boyfriendConfig.js'
-import { DEFAULT_CARD_DEFINITIONS } from './cardDefinitions.js'
+import { normalizeCardCatalog } from './cardGroups.js'
 
 const ruleError = message => Object.assign(new Error(message), { status: 400 })
 
@@ -15,15 +15,14 @@ export function createGame(config, level = 1, roundId = crypto.randomUUID(), now
   const boyfriend = normalizeBoyfriendSettings(config)
   const photos = boyfriend.bfPhotos
   const profile = photos[config.bfPhotoIndex === 0 ? Math.floor(Math.random() * photos.length) : Math.max(0, Math.min(5, (config.bfPhotoIndex || 1) - 1))]
-  let defs = structuredClone(config.customCards?.length >= 3 ? config.customCards : DEFAULT_CARD_DEFINITIONS)
-  if (!defs.some(def => def.id === 'boyfriend_photo')) defs.push(structuredClone(DEFAULT_CARD_DEFINITIONS.find(def => def.id === 'boyfriend_photo')))
-  defs = defs.filter(def => def.id !== 'boyfriend_photo' || boyfriend.bfCardEnabled).map(def => def.id === 'boyfriend_photo'
-    ? { ...def, name: profile.name, customImage: undefined, staticImage: profile.image }
-    : { ...def, staticImage: config.activeCardPhotos?.[def.id] || def.staticImage })
+  const catalog = normalizeCardCatalog(config)
+  const selected = settings.levels[level - 1].cardGroupIds
+  const defs = catalog.customCards.filter(def => !selected || selected.includes(def.groupId)).map(def => ({ ...def, staticImage: config.activeCardPhotos?.[def.id] || def.staticImage }))
+  if (!defs.length) throw ruleError('本关选中的卡片分组没有卡片，请在后台调整')
   const { cards } = createLevel(level, defs.map(def => def.id), Math.random, settings)
   return { roundId, level, settings, defs, profile, cards, slots: [], staged: [], eliminating: [], resolveAt: 0,
     phase: 'playing', modal: '', couponTab: 'all', startedAt: now, endedAt: 0, matches: 0, unlocked: settings.initialSlots,
-    tools: { ...INITIAL_TOOLS }, hinted: [], hintUntil: 0, rewardId: '', applied: [] }
+    tools: { hint: 0, rescue: 0 }, hinted: [], hintUntil: 0, rewardId: '', applied: [] }
 }
 
 function coverage(game) {
@@ -52,16 +51,21 @@ function checkMatch(game, now) {
       return
     }
   }
-  if (game.slots.length >= game.unlocked) { game.phase = 'lost'; game.endedAt = now }
+  if (game.slots.length >= game.unlocked || (!game.staged.length && game.cards.every(card => card.status !== 'board'))) { game.phase = 'lost'; game.endedAt = now }
 }
 
 export function settleGame(game, now = Date.now()) {
   if (!game.resolveAt || now < game.resolveAt) return false
   const ids = new Set(game.eliminating)
-  game.cards.forEach(card => { if (ids.has(card.id)) card.status = 'cleared' })
-  game.slots = game.slots.filter(id => !ids.has(id))
+  const group = game.cards.filter(card => ids.has(card.id))
+  const validMatch = group.length === 3 && group.every(card => card.status === 'slot' && card.type === group[0].type)
+  if (validMatch) {
+    game.cards.forEach(card => { if (ids.has(card.id)) card.status = 'cleared' })
+    game.slots = game.slots.filter(id => !ids.has(id))
+  }
   game.eliminating = []; game.resolveAt = 0
   if (game.cards.every(card => card.status === 'cleared')) { game.phase = 'won'; game.endedAt = now }
+  else if (!game.staged.length && game.cards.every(card => card.status !== 'board')) { game.phase = 'lost'; game.endedAt = now }
   return true
 }
 

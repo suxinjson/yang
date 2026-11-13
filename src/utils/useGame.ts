@@ -5,7 +5,7 @@ import { applyGameAction, createGame, settleGame, type GameAction, type GameStat
 import { getBoardLayout } from '../../shared/boardGeometry.js'
 import { loadAdminConfig, acceptServerConfig } from './adminConfig'
 import { loadCardDefinitions } from './cardThemes'
-import { loadCoupons, saveCoupons } from './coupons'
+import { personalBackpack } from './backpack'
 import { getBaseUrl } from './api'
 import { serverState, acceptServerState } from './serverState'
 import { actionBusy, operationError } from './clientSession'
@@ -29,10 +29,12 @@ export function useGame() {
   const eliminatingIds = computed({ get: () => game.value.eliminating, set: ids => { game.value.eliminating = ids } })
   const unlockedSlots = computed({ get: () => game.value.unlocked, set: slots => { game.value.unlocked = slots } })
   const matchCountThisRound = computed({ get: () => game.value.matches, set: matches => { game.value.matches = matches } })
-  const propsState = computed(() => game.value.tools)
+  const propsState = computed(() => personalBackpack.value?.tools || { hint: 0, rescue: 0 })
+  const backpackItems = computed(() => personalBackpack.value?.items || [])
+  const latestWonItems = computed(() => game.value.rewards || [])
   const hasPending = computed(() => !couple.value && !!solo.value.pending)
   const isResolving = computed(() => booting.value || !!game.value.resolveAt || actionBusy.value || roomBusy.value || hasPending.value || (couple.value && roomConnection.value !== 'ready'))
-  const canRescue = computed(() => game.value.tools.rescue > 0 && game.value.slots.length > 0 && !game.value.staged.length)
+  const canRescue = computed(() => propsState.value.rescue > 0 && game.value.slots.length > 0 && !game.value.staged.length)
   const activeBoardCards = computed(() => game.value.cards.filter(card => card.status === 'board'))
   const remainingCardsCount = computed(() => game.value.cards.filter(card => card.status !== 'cleared').length)
   const availableCardsCount = computed(() => activeBoardCards.value.filter(card => !card.isCovered).length)
@@ -40,7 +42,7 @@ export function useGame() {
   const totalLevelsCount = computed(() => game.value.settings.levels.length)
   const slotUnlockProgress = computed(() => ({ current: game.value.matches, required: game.value.settings.slotUnlockMatchCount || 3 }))
   const boardLayout = computed(() => getBoardLayout(game.value.settings))
-  const loveCoupons = ref(loadCoupons()), unusedCouponsCount = computed(() => loveCoupons.value.filter(coupon => !coupon.used).length)
+  const loveCoupons = computed(() => [...(personalBackpack.value?.coupons || []), ...(serverState.value?.coupons || [])]), unusedCouponsCount = computed(() => loveCoupons.value.filter(coupon => !coupon.used).length)
   const couponDisplayName = computed(() => currentAdminConfig.value.couponName || '专属心愿券')
   const cardTextMode = computed(() => currentAdminConfig.value.cardTextMode)
   const latestWonCoupon = computed(() => loveCoupons.value.find(coupon => coupon.id === game.value.rewardId))
@@ -67,10 +69,10 @@ export function useGame() {
   function showSlotToast(message: string) { slotToastMessage.value = message; if (toastTimer) clearTimeout(toastTimer); toastTimer = setTimeout(() => { slotToastMessage.value = '' }, 3000) }
   watch(serverState, snapshot => {
     if (!snapshot) return
-    saveCoupons(snapshot.coupons); loveCoupons.value = snapshot.coupons
+    try { localStorage.removeItem('couple_game_love_coupons_v2') } catch { /* The legacy cache carries no personal ownership. */ }
     currentAdminConfig.value = acceptServerConfig(snapshot.config); cardDefs.value = loadCardDefinitions()
     // Names and photos update together through the room's global message. Geometry stays pinned.
-    if (!couple.value) solo.value.game.defs = solo.value.game.defs.map(def => def.id === 'boyfriend_photo' ? def : ({ ...def, ...(cardDefs.value.find(item => item.id === def.id) || {}) }))
+    if (!couple.value) solo.value.game.defs = solo.value.game.defs.map(def => ({ ...def, ...(cardDefs.value.find(item => item.id === def.id) || {}) }))
   }, { flush: 'sync' })
   watch(soundEnabled, enabled => { sound.enabled = enabled })
   watch(playMode, () => { hasSavedRoom.value = !!localStorage.getItem('gang_room_credentials') })
@@ -80,7 +82,10 @@ export function useGame() {
   function getCardDef(type: string) { return definitions.value.get(type) }
   function initLevel(level: number) {
     if (settle) clearTimeout(settle)
-    solo.value = { game: createGame(loadAdminConfig(), level), token: '', practice: true }; persist()
+    const modal = solo.value.game.modal
+    solo.value = { game: createGame(loadAdminConfig(), level), token: '', practice: true }
+    if (modal === 'coupons') solo.value.game.modal = modal
+    persist()
   }
   async function startSolo(level = 1, initial = false) {
     if (settle) clearTimeout(settle)
@@ -89,6 +94,7 @@ export function useGame() {
     try {
       const data = await playPost('solo/start', { operationId, level }, initial ? 3000 : 8000)
       if (!data.game?.roundId || !data.token) throw new Error('后台需要更新后才能记录本关')
+      if (solo.value.game.modal === 'coupons') data.game.modal = 'coupons'
       solo.value = { game: data.game, token: data.token, practice: false }; persist(); localStorage.removeItem(key)
     } catch (error) {
       if ((error as { status?: number }).status === 409) localStorage.removeItem(key)
@@ -104,6 +110,8 @@ export function useGame() {
       if (couple.value || solo.value.game.roundId !== roundId) return
       settleGame(solo.value.game, Math.max(Date.now() + serverOffset.value, solo.value.game.resolveAt)); persist()
       if (solo.value.game.phase === 'won') void finishSolo()
+      else if (solo.value.game.resolveAt) scheduleResolve()
+      noteBlocked()
     }, Math.max(0, solo.value.game.resolveAt - Date.now() - serverOffset.value))
   }
   async function finishSolo() {
@@ -112,6 +120,7 @@ export function useGame() {
     const saved = solo.value, roundId = saved.game.roundId
     try {
       const data = await playPost('solo/finish', { roundId, token: saved.token, outcome: 'won' })
+      saved.game.rewards = data.rewards || []
       saved.game.rewardId = data.rewardId; saved.finishAck = roundId
       if (solo.value === saved) { operationError.value = ''; persist() }
     } catch (error) { operationError.value = error instanceof Error ? error.message : '通关奖励未确认，点击重试' }
@@ -120,14 +129,15 @@ export function useGame() {
   function localAction(action: GameAction) {
     applyGameAction(solo.value.game, action, Date.now() + serverOffset.value); saveSoon(); scheduleResolve()
     if (action.type === 'pick' || action.type === 'return') sound.playSlot()
-    if (solo.value.game.phase === 'lost' && !solo.value.practice && !solo.value.blockedAck) { solo.value.blockedPending = true; persist(); void reportBlocked() }
+    noteBlocked()
   }
+  function noteBlocked() { if (solo.value.game.phase === 'lost' && !solo.value.practice && !solo.value.blockedAck) { solo.value.blockedPending = true; persist(); void reportBlocked() } }
   let reportingBlocked = false
   async function reportBlocked() {
     if (reportingBlocked || !solo.value.blockedPending) return
     reportingBlocked = true
     const saved = solo.value
-    try { await playPost('solo/blocked', { roundId: saved.game.roundId, token: saved.token }); saved.blockedPending = false; saved.blockedAck = true; persist() }
+    try { await playPost('solo/blocked', { roundId: saved.game.roundId, token: saved.token, cause: !saved.game.cards.some(card => card.status === 'board') && saved.game.slots.length < saved.game.unlocked ? 'unmatchable' : 'slots_full' }); saved.blockedPending = false; saved.blockedAck = true; persist() }
     catch { /* Retry meaningful round status on the next periodic/foreground sync. */ }
     finally { reportingBlocked = false }
   }
@@ -138,6 +148,7 @@ export function useGame() {
     // Game state is JSON data. Nested reactive definitions can survive toRaw(),
     // so normalize the whole checkpoint before preparing a durable operation.
     const candidate = JSON.parse(JSON.stringify(solo.value.game)) as GameState
+    if (!solo.value.pending) candidate.tools = { ...propsState.value }
     applyGameAction(candidate, { ...action, couponConfirmed: action.type === 'unlock' }, Date.now() + serverOffset.value)
     const pending = solo.value.pending || { operationId: crypto.randomUUID(), action }
     solo.value.pending = pending
@@ -200,7 +211,7 @@ export function useGame() {
     if (couple.value) sendRoomAction({ type: 'filter_coupons', tab })
     else { applyGameAction(solo.value.game, { type: 'filter_coupons', tab }); saveSoon() }
   }
-  function openCoupons() { setModal('open_coupons') }
+  function openCoupons() { setModal('open_coupons'); void playPost('backpack', {}).catch(() => {}) }
   function closeCoupons() { setModal('close_modal') }
   function closeBoyfriendModal() { setModal('close_modal') }
   async function handleRedeemCoupon(couponId: string) {
@@ -284,7 +295,7 @@ export function useGame() {
   return { couple, roomInfo, roomConnection, roomBusy, hasSavedRoom, switchMode, reconnectRoom, actionBusy, operationError, rewardPending,
     game, solo, currentLevel, allCards, slotCards, stagedCards, eliminatingIds, unlockedSlots, matchCountThisRound, activeGameSettings, roundCardDefs, boardLayout, cardDefs,
     propsState, isResolving, canRescue, activeBoardCards, remainingCardsCount, availableCardsCount, totalCardsCount, totalLevelsCount, slotUnlockProgress,
-    loveCoupons, unusedCouponsCount, couponDisplayName, cardTextMode, latestWonCoupon, rewardUnconfirmed, rescueProfile, soundEnabled, elapsedText, showBoyfriendModal, showWinModal, showFailModal, showCouponsModal,
+    backpackItems, latestWonItems, loveCoupons, unusedCouponsCount, couponDisplayName, cardTextMode, latestWonCoupon, rewardUnconfirmed, rescueProfile, soundEnabled, elapsedText, showBoyfriendModal, showWinModal, showFailModal, showCouponsModal,
     slotToastMessage, hasPending, booting, now, serverOffset, getCardDef, initLevel, handleCardClick, handleReturnStaged, handleHint, handleSummonBoyfriend, handleUnlockSlot,
     restartCurrentLevel, handleNextLevel, openCoupons, filterCoupons, closeCoupons, closeBoyfriendModal, handleRedeemCoupon, retryPending,
     toggleSound: () => { soundEnabled.value = !soundEnabled.value } }

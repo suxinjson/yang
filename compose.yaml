@@ -10,3 +10,16 @@ services:
       - ./data:/app/data
     environment:
       - PORT=3000
+      - STORAGE_DRIVER=postgres
+      - PGHOST=db
+      - PGPORT=5432
+      - PGDATABASE=${GANG_DATABASE_NAME:-ganglegang}
+      - PGUSER=${GANG_DATABASE_USER:-ganglegang_app}
+      - PGPASSWORD=${GANG_DATABASE_PASSWORD:?请配置游戏数据库专用密码}
+    networks:
+      - member_private
+
+networks:
+  member_private:
+    external: true
+    name: ${GANG_DATABASE_NETWORK:-member_private}

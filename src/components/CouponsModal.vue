@@ -1,5 +1,12 @@
 <template>
-  <GameDialog :title="`${couponName || '心愿券'}存折`" dismissible @close="$emit('close')">
+  <GameDialog title="我的背包" dismissible @close="$emit('close')">
+    <div class="mb-5 space-y-3" aria-label="背包道具">
+      <h3 class="text-sm font-semibold">游戏道具</h3>
+      <div v-for="item in items" :key="item.itemId" class="flex items-center justify-between rounded-xl bg-rose-50 p-3 text-sm"><span>{{ item.icon }} {{ item.name }}</span><strong>× {{ item.quantity }}</strong></div>
+      <p v-if="!items?.length" class="text-xs text-stone-500">暂无游戏道具，通关有机会获得。</p>
+      <p class="text-xs text-stone-500">各游戏共用此背包，道具不会随关卡重置。</p>
+      <h3 class="pt-2 text-sm font-semibold">{{ couponName || '心愿券' }}</h3>
+    </div>
     <div class="coupon-tabs" role="tablist" aria-label="心愿券筛选">
       <button v-for="tab in tabs" :key="tab.value" role="tab" :aria-selected="(activeTab || 'all') === tab.value" @click="$emit('filter', tab.value)">{{ tab.label }} <span>{{ tab.count }}</span></button>
     </div>
@@ -13,7 +20,7 @@
         <div class="min-w-0 flex-1">
           <h3 class="text-sm font-semibold">{{ coupon.title }}</h3>
           <p v-if="coupon.desc" class="mt-1 text-xs leading-relaxed text-stone-500">{{ coupon.desc }}</p>
-          <p class="mt-2 text-[10px] text-stone-400">{{ coupon.obtainedAt }}</p>
+          <p class="mt-2 text-[10px] text-stone-400">{{ coupon.obtainedAt }} · {{ coupon.ownerId ? '个人心愿券' : '旧版共享券' }}</p>
         </div>
         <span v-if="coupon.used" class="text-[11px] whitespace-nowrap text-stone-400">已兑现</span>
         <button v-else class="redeem-button" :disabled="busy" @click="$emit('redeem', coupon.id)">兑现</button>
@@ -25,9 +32,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import GameDialog from './GameDialog.vue'
+import type { BackpackItem } from '../utils/backpack'
 import type { LoveCoupon } from '../types/game'
 type Tab = 'all' | 'unredeemed' | 'redeemed'
-const props = defineProps<{ coupons: LoveCoupon[]; couponName?: string; activeTab?: Tab; error?: string; busy?: boolean }>()
+const props = defineProps<{ items?: BackpackItem[]; coupons: LoveCoupon[]; couponName?: string; activeTab?: Tab; error?: string; busy?: boolean }>()
 defineEmits<{ (e: 'close'): void; (e: 'redeem', couponId: string): void; (e: 'filter', tab: Tab): void; (e: 'retry'): void }>()
 const tabs = computed(() => [
   { value: 'all' as const, label: '全部', count: props.coupons.length },

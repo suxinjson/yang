@@ -30,7 +30,7 @@ async function backend() {
       })
       await page.route('**/photos/**', route => route.abort())
     },
-    async restart() { await stop(); await start() },
+    async restart(beforeStart?: () => void) { await stop(); beforeStart?.(); await start() },
     async close() { await stop(); if (path.dirname(directory) !== path.resolve(tmpdir()) || !path.basename(directory).startsWith('yang-sync-')) throw new Error('Unexpected sync directory'); rmSync(directory, { recursive: true, force: true }) }
   }
 }
@@ -49,8 +49,8 @@ test('native and web pages synchronize names, photos, rewards, redemption and re
     await Promise.all([page.goto('/'), native.goto('http://127.0.0.1:5175/')])
     await expect(page.locator('.board-arena')).toBeVisible()
     await expect(native.locator('.board-arena')).toBeVisible()
-    await page.getByTitle('查看情侣心愿存折').click()
-    await native.getByTitle('查看情侣心愿存折').click()
+    await page.getByTitle('查看个人背包').click()
+    await native.getByTitle('查看个人背包').click()
     const draw = await (await server.post('/api/coupons/draw', { deviceId: 'sync_device_123', operationId: 'sync_operation_123', context: 'win_1' }, login.token)).json()
     await expect(page.getByText('跨页面同步奖励', { exact: true })).toBeVisible({ timeout: 15000 })
     await expect(native.getByText('跨页面同步奖励', { exact: true })).toBeVisible({ timeout: 15000 })
@@ -58,8 +58,8 @@ test('native and web pages synchronize names, photos, rewards, redemption and re
     await expect(page.getByText('已兑现', { exact: true })).toBeVisible()
     await expect(native.getByText('已兑现', { exact: true })).toBeVisible({ timeout: 15000 })
     await server.post('/api/config', { couponName: '全程同步券', bfPhotos: [{ name: '同步帅照', image: '/photos/synced.jpg' }] }, login.token)
-    await expect(page.getByText('全程同步券存折', { exact: true })).toBeVisible({ timeout: 15000 })
-    await expect(native.getByText('全程同步券存折', { exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('heading', { name: '全程同步券', exact: true })).toBeVisible({ timeout: 15000 })
+    await expect(native.getByRole('heading', { name: '全程同步券', exact: true })).toBeVisible({ timeout: 15000 })
     await expect.poll(() => native.evaluate(() => JSON.parse(localStorage.getItem('couple_game_admin_config_v3')!).bfPhotos[0].name)).toBe('同步帅照')
     await server.post('/api/coupons/reset', {}, login.token)
     await expect(page.getByText('暂无心愿券', { exact: true })).toBeVisible({ timeout: 15000 })
@@ -191,7 +191,7 @@ for (const native of [false, true]) {
       }
       await expect.poll(() => completions.length).toBe(2)
       expect(new Set(completions).size).toBe(2)
-      const coupons = await (await fetch(server.base + '/api/coupons')).json()
+      const coupons = await page.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.loveCoupons)
       expect(coupons.filter((coupon: any) => /第 [45] 关通关/.test(coupon.obtainedAt))).toHaveLength(2)
       const invalid = await server.post('/api/coupons/draw', { deviceId: 'test_device_123', operationId: 'invalid_level_123', context: 'win_6' })
       expect(invalid.status).toBe(400)
@@ -256,6 +256,7 @@ test('legacy coupon files migrate without losing redeemed rewards', async () => 
     const coupon = { id: 'legacy_reward', title: 'legacy', used: true, target: 'boyfriend_pays' }
     const legacy = path.join(server.directory, 'coupons.json')
     writeFileSync(legacy, JSON.stringify([coupon]))
+    await server.restart(() => rmSync(path.join(server.directory, 'coupon-ledger.json')))
     const state = (await (await fetch(server.base + '/api/state')).json()).state
     expect(state.coupons).toEqual([coupon])
     expect(JSON.parse(readFileSync(path.join(server.directory, 'coupon-ledger.json'), 'utf8')).coupons).toEqual([coupon])

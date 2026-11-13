@@ -8,7 +8,12 @@ export interface CardItem {
   isCovered: boolean
 }
 
+export interface CardGroup { id: string; name: string }
+export type CardLayout = 'scatter' | 'diamond' | 'heart' | 'cross' | 'ring' | 'butterfly' | 'pyramid' | 'hourglass' | 'fortress'
+export interface RewardPolicy { simultaneous: boolean; hintChance: number; rescueChance: number; couponChance: number }
+
 export interface CardDefinition {
+  groupId?: string
   id: string
   name: string
   desc: string
@@ -24,6 +29,7 @@ export type CardTextMode = 'none' | 'name' | 'description'
 export type CouponTarget = 'girlfriend_pays' | 'boyfriend_pays' // 趣味互动任务 vs 甜蜜特权礼券
 
 export interface LoveCoupon {
+  ownerId?: string
   id: string
   title: string
   desc: string
@@ -51,7 +57,8 @@ export interface LevelSettings {
   spreadX: number
   spreadY: number
   randomness: number
-  layout: 'scatter' | 'heart'
+  layout: CardLayout
+  cardGroupIds?: string[] // omitted means all groups, including new groups
   solvability?: SolvabilityMode
 }
 
@@ -71,6 +78,8 @@ export interface GameSettings {
 }
 
 export interface AdminConfig {
+  cardGroups: CardGroup[]
+  rewardPolicy: RewardPolicy
   cardTextMode: CardTextMode
   bfPhotos: BoyfriendPhoto[]
   bfCardEnabled: boolean
@@ -80,8 +89,8 @@ export interface AdminConfig {
   gfPenaltyRatio: number // 0 to 100 (percentage of girlfriend tasks vs boyfriend tasks)
   activeCardPhotos: Record<string, string> // cardId -> photo path or base64
   customCards?: CardDefinition[] // Dynamic card definitions (add, delete, rename, change image)
-  girlfriendTasks: TaskItem[] // Customizable GF penalties / tasks
-  boyfriendRewards: TaskItem[] // Customizable BF rewards / treats
+  girlfriendTasks: TaskItem[] // Boyfriend wishes, fulfilled by girlfriend
+  boyfriendRewards: TaskItem[] // Girlfriend wishes, fulfilled by boyfriend
 }
 
 export interface BoyfriendPhoto {

@@ -94,8 +94,8 @@ test('App recovers a lost join acknowledgement and superseded tabs stay disconne
     await expect(page.getByText('同一身份已在另一页面连接；点击重新连接可接管', { exact: true })).toBeVisible()
     const before = server.frames.filter(frame => frame.type === 'replaced').length
     // A stable new connection can issue multiple authoritative commands while the old tab remains paused.
-    await twin.getByRole('button', { name: /透视提示/ }).click()
-    await expect(twin.getByRole('button', { name: /透视提示/ })).toContainText('剩 1 次')
+    await twin.getByRole('button', { name: /透视卡/ }).click()
+    await expect(twin.getByRole('button', { name: /透视卡/ })).toContainText('剩 1 次')
     await twin.waitForTimeout(1800)
     expect(server.frames.filter(frame => frame.type === 'replaced')).toHaveLength(before)
     await expect(twin.getByTestId('mode-panel').getByRole('status')).toContainText('已连接')
@@ -115,7 +115,7 @@ test('invalid room actions are definitive rejections and do not trap subsequent 
     socket = new WebSocket(server.base.replace('http:', 'ws:') + '/api/play/socket')
     await new Promise<void>(resolve => socket!.once('open', resolve))
     const ready = receive(data => data.type === 'snapshot')
-    socket.send(JSON.stringify({ type: 'auth', roomId: room.room.id, token: room.token })); await ready
+    socket.send(JSON.stringify({ type: 'auth', ...server.credentials(room.backpack.profileId), roomId: room.room.id, token: room.token })); await ready
     const rejected = receive(data => data.rejected === 'review_invalid_pick')
     socket.send(JSON.stringify({ operationId: 'review_invalid_pick', revision: room.room.revision, roundId: room.game.roundId, action: { type: 'pick', cardId: -1 } }))
     expect((await rejected).type).toBe('error')
@@ -141,12 +141,12 @@ test('transient room storage failure and a lost committed acknowledgement preser
     await expect(page.getByTestId('mode-panel').getByRole('status')).toContainText('已连接')
     const original = readFileSync(file, 'utf8')
     writeFileSync(file, '{storage temporarily unavailable')
-    await page.getByRole('button', { name: /透视提示/ }).click()
+    await page.getByRole('button', { name: /透视卡/ }).click()
     await expect.poll(() => server.frames.some(frame => frame.type === 'error' && !frame.rejected)).toBe(true)
     const operationId = await page.evaluate(() => JSON.parse(localStorage.getItem('gang_room_pending')!).operationId)
     writeFileSync(file, original)
     await expect.poll(() => page.evaluate(() => !localStorage.getItem('gang_room_pending')), { timeout: 15000 }).toBe(true)
-    await expect(page.getByRole('button', { name: /透视提示/ })).toContainText('剩 1 次')
+    await expect(page.getByRole('button', { name: /透视卡/ })).toContainText('剩 1 次')
     await expect(page.getByRole('alert')).toHaveCount(0)
     const ledger = JSON.parse(readFileSync(file, 'utf8'))
     expect(ledger.transactions.filter((row: any) => row.event === 'prop_use')).toHaveLength(1)
@@ -190,7 +190,7 @@ test('coupon modal can retry a lost redemption acknowledgement after the coupon 
   try {
     await server.attach(page, true); await page.goto('/')
     await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
-    await page.getByTitle('查看情侣心愿存折').click()
+    await page.getByTitle('查看个人背包').click()
     await page.route('**/api/play/coupons/redeem', async route => {
       await route.fetch({ url: server.base + '/api/play/coupons/redeem' }); await route.abort()
     }, { times: 1 })

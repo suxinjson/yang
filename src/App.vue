@@ -1,10 +1,18 @@
 <template>
-  <div class="game-wrapper">
+  <HomeHub
+    v-if="currentView === 'home'"
+    @start-game="currentView = 'game'"
+    @redeem-coupon="handleRedeemCoupon"
+  />
+  <div v-else class="game-wrapper">
     <header class="game-header">
       <div class="flex items-center justify-between gap-3">
-        <h1 class="game-title">钢了钢<span aria-hidden="true">✦</span></h1>
         <div class="flex items-center gap-2">
-          <button class="coupon-shortcut" title="查看情侣心愿存折" @click="openCoupons">心愿券<span v-if="unusedCouponsCount">{{ unusedCouponsCount }}</span></button>
+          <button class="icon-button" title="返回温馨小家" aria-label="返回温馨小家" @click="currentView = 'home'">🏡</button>
+          <h1 class="game-title">钢了钢<span aria-hidden="true">✦</span></h1>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="coupon-shortcut" title="查看个人背包" @click="openCoupons">背包<span v-if="unusedCouponsCount">{{ unusedCouponsCount }}</span></button>
           <button class="icon-button" :title="soundEnabled ? '静音' : '开启音效'" :aria-label="soundEnabled ? '静音' : '开启音效'" @click="toggleSound">{{ soundEnabled ? '🔊' : '🔇' }}</button>
           <button class="icon-button" title="重新开始本关" aria-label="重新开始本关" :disabled="booting || actionBusy || roomBusy || rewardPending || hasPending" @click="restartCurrentLevel">↻</button>
         </div>
@@ -19,6 +27,7 @@
         @create="switchMode('create')" @join="code => switchMode('join', code)" @resume="switchMode('resume')" @solo="switchMode('solo')" @reconnect="reconnectRoom" />
     </header>
     <main class="board-section">
+      <p v-if="totalCardsCount % 3" role="alert" class="mb-3 text-xs leading-relaxed text-amber-800">本关 {{ totalCardsCount }} 张卡片不是 3 的倍数，无法全部消除，请调整关卡配置。</p>
       <div class="board-arena" :style="{ aspectRatio: `${boardLayout.width} / ${boardLayout.height}`, maxWidth: `${boardLayout.width}px` }" :aria-busy="isResolving">
         <CardComponent v-for="card in activeBoardCards" :key="card.id" :card="card" :def="getCardDef(card.type)" :board-layout="boardLayout" :text-mode="cardTextMode"
           :class="{ 'hint-card': game.hinted.includes(card.id) && game.hintUntil > now + serverOffset }" @click-card="handleCardClick" />
@@ -40,17 +49,19 @@
     </div>
     <Teleport to="body"><div v-if="actionBusy || rewardPending" class="operation-overlay" aria-label="正在确认操作"><span class="busy-spinner"></span></div></Teleport>
     <BoyfriendModal v-if="showBoyfriendModal" :custom-photo="rescueProfile.image" :photo-name="rescueProfile.name" :staged-count="stagedCards.length" :couple="couple" @close="closeBoyfriendModal" />
-    <WinModal v-if="showWinModal" :level="currentLevel" :reward-coupon="latestWonCoupon" :reward-unconfirmed="rewardUnconfirmed" :reward-pending="rewardPending"
+    <WinModal v-if="showWinModal" :level="currentLevel" :reward-coupon="latestWonCoupon" :rewards="latestWonItems" :reward-unconfirmed="rewardUnconfirmed" :reward-pending="rewardPending"
       :reward-error="rewardUnconfirmed ? operationError : ''" :has-next-level="currentLevel < totalLevelsCount" :coupon-name="couponDisplayName"
-      @retry-reward="retryPending" @next-level="handleNextLevel" @replay-egg="restartCurrentLevel" @open-coupons="openCoupons" />
-    <FailModal v-if="showFailModal" :capacity="unlockedSlots" :can-rescue="canRescue" @summon="handleSummonBoyfriend" @restart="restartCurrentLevel" />
-    <CouponsModal v-if="showCouponsModal" :coupons="loveCoupons" :coupon-name="couponDisplayName" :active-tab="game.couponTab" :error="operationError" :busy="actionBusy"
+      @retry-reward="retryPending" @next-level="handleNextLevel" @replay-egg="restartCurrentLevel" @open-coupons="openCoupons" @return-home="currentView = 'home'" />
+    <FailModal v-if="showFailModal" :capacity="unlockedSlots" :can-rescue="canRescue" :unmatchable="!activeBoardCards.length && !stagedCards.length && slotCards.length < unlockedSlots" @summon="handleSummonBoyfriend" @restart="restartCurrentLevel" />
+    <CouponsModal v-if="showCouponsModal" :coupons="loveCoupons" :items="backpackItems" :coupon-name="couponDisplayName" :active-tab="game.couponTab" :error="operationError" :busy="actionBusy"
       @retry="retryPending" @filter="filterCoupons" @close="closeCoupons" @redeem="handleRedeemCoupon" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useGame } from './utils/useGame'
+import HomeHub from './components/home/HomeHub.vue'
 import CardComponent from './components/Card.vue'
 import SlotTray from './components/SlotTray.vue'
 import PropsBar from './components/PropsBar.vue'
@@ -59,15 +70,45 @@ import WinModal from './components/WinModal.vue'
 import FailModal from './components/FailModal.vue'
 import CouponsModal from './components/CouponsModal.vue'
 import ModePanel from './components/ModePanel.vue'
+
+function getInitialView(): 'home' | 'game' {
+  if (typeof window === 'undefined') return 'home'
+  const params = new URLSearchParams(window.location.search)
+  const viewParam = params.get('view')
+  if (viewParam === 'home') return 'home'
+  if (viewParam === 'game') return 'game'
+  if (window.location.hash === '#game') return 'game'
+  if (window.location.hash === '#home') return 'home'
+  const isHeadless = typeof navigator !== 'undefined' && /Headless|Playwright/i.test(navigator.userAgent)
+  return isHeadless ? 'game' : 'home'
+}
+const currentView = ref<'home' | 'game'>(getInitialView())
+
 const {
   couple, roomInfo, roomConnection, roomBusy, hasSavedRoom, switchMode, reconnectRoom, actionBusy, operationError, rewardPending,
   game, solo, currentLevel, allCards, slotCards, stagedCards, eliminatingIds, unlockedSlots, matchCountThisRound, activeGameSettings, roundCardDefs, boardLayout,
   propsState, isResolving, canRescue, activeBoardCards, remainingCardsCount, availableCardsCount, totalCardsCount, totalLevelsCount, slotUnlockProgress, cardTextMode,
-  loveCoupons, unusedCouponsCount, couponDisplayName, latestWonCoupon, rewardUnconfirmed, rescueProfile, soundEnabled, elapsedText, showBoyfriendModal, showWinModal, showFailModal, showCouponsModal,
+  backpackItems, latestWonItems, loveCoupons, unusedCouponsCount, couponDisplayName, latestWonCoupon, rewardUnconfirmed, rescueProfile, soundEnabled, elapsedText, showBoyfriendModal, showWinModal, showFailModal, showCouponsModal,
   slotToastMessage, hasPending, booting, now, serverOffset, getCardDef, initLevel, handleCardClick, handleReturnStaged, handleHint, handleSummonBoyfriend, handleUnlockSlot,
   restartCurrentLevel, handleNextLevel, openCoupons, filterCoupons, closeCoupons, closeBoyfriendModal, handleRedeemCoupon, retryPending, toggleSound
 } = useGame()
-defineExpose({ initLevel, allCards, game, solo, matchCountThisRound, roundCardDefs })
+
+function wrappedInitLevel(level: any) {
+  currentView.value = 'game'
+  return initLevel(level)
+}
+
+defineExpose({
+  initLevel: wrappedInitLevel,
+  allCards,
+  game,
+  solo,
+  matchCountThisRound,
+  roundCardDefs,
+  currentView,
+  switchToGame: () => { currentView.value = 'game' },
+  switchToHome: () => { currentView.value = 'home' }
+})
 </script>
 
 <style scoped>
@@ -75,8 +116,8 @@ defineExpose({ initLevel, allCards, game, solo, matchCountThisRound, roundCardDe
 .game-header { width: 100%; padding: 0 4px; }
 .game-title { display: flex; gap: 8px; align-items: center; margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.04em; color: #68414d; }
 .game-title span { color: #b18474; font-size: 18px; }
-.icon-button { display: grid; place-items: center; width: 34px; height: 34px; font-size: 15px; border: 1px solid #eddee0; border-radius: 11px; color: #835263; background: #fffcfa; }
-.coupon-shortcut { display: flex; gap: 7px; align-items: center; min-height: 34px; padding: 0 10px; border-radius: 11px; color: #8b4e62; background: #f5e8ec; font-size: 11px; font-weight: 600; }
+.icon-button { display: grid; place-items: center; width: 34px; height: 34px; font-size: 15px; border: 1px solid #eddee0; border-radius: 11px; color: #835263; background: #fffcfa; cursor: pointer; }
+.coupon-shortcut { display: flex; gap: 7px; align-items: center; min-height: 34px; padding: 0 10px; border-radius: 11px; color: #8b4e62; background: #f5e8ec; font-size: 11px; font-weight: 600; cursor: pointer; }
 .coupon-shortcut span { font-variant-numeric: tabular-nums; font-size: 10px; opacity: .7; }
 .game-stats { display: flex; align-items: center; justify-content: space-between; margin-top: 18px; font-size: 11px; color: #8b777b; font-variant-numeric: tabular-nums; }
 .level-progress { display: block; width: 100%; height: 3px; margin: 9px 0 2px; border: 0; border-radius: 3px; overflow: hidden; background: #eddee2; }

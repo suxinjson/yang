@@ -24,7 +24,7 @@ test('Android solo remains playable offline and does not emit click or heartbeat
   await expect(page.locator('.in-slot')).toHaveCount(1)
   await page.getByTitle('静音').click()
   expect(requests.length).toBe(baseline)
-  await expect(page.getByRole('button', { name: /透视提示/ })).toBeDisabled()
+  await expect(page.getByRole('button', { name: /透视卡/ })).toBeDisabled()
   await context.setOffline(false)
   await page.reload()
   await expect(page.locator('.in-slot')).toHaveCount(1)
@@ -114,6 +114,6 @@ test('administrator can filter client records and sees expired authentication', 
   await page.getByRole('button', { name: '设备：device1234' }).click()
   await expect.poll(() => queries.some(url => url.includes('deviceId=device1234'))).toBe(true)
   expired = true
-  await page.getByRole('button', { name: '查询 / 刷新', exact: true }).click()
+  await page.getByRole('button', { name: '查询日志', exact: true }).click()
   await expect(page.getByRole('alert')).toContainText('登录已过期')
 })
