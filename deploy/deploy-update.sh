@@ -21,6 +21,12 @@ connect_caddy_networks() {
   for MEMBER_NET in $(docker inspect member-web-1 --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
     docker network connect --alias ganglegang "$MEMBER_NET" ganglegang 2>/dev/null || true
   done
+  if [ -n "${GANG_DATABASE_NETWORK:-}" ]; then
+    docker network connect --alias ganglegang "$GANG_DATABASE_NETWORK" ganglegang 2>/dev/null || true
+  fi
+  for DB_NET in $(docker inspect db --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
+    docker network connect --alias ganglegang "$DB_NET" ganglegang 2>/dev/null || true
+  done
 }
 
 restore_on_failure() {
