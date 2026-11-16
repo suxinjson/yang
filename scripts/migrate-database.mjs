@@ -12,7 +12,11 @@ const connection = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) 
 const env = { ...process.env, ...(connection ? { PGHOST: connection.hostname, PGPORT: connection.port || '5432', PGDATABASE: decodeURIComponent(connection.pathname.slice(1)), PGUSER: decodeURIComponent(connection.username), PGPASSWORD: decodeURIComponent(connection.password) } : {}) }
 // Passwords stay in the child environment, never command arguments or logs.
 const dump = spawnSync(process.env.PG_DUMP_BIN || 'pg_dump', ['--format=custom', '--file', backup], { env, stdio: ['ignore', 'ignore', 'pipe'] })
-if (dump.error || dump.status !== 0 || !fs.existsSync(backup) || fs.statSync(backup).size === 0) throw new Error('pg_dump 备份失败，已停止迁移。请检查 PostgreSQL 17 客户端、连接和备份目录')
+if (dump.error || dump.status !== 0 || !fs.existsSync(backup) || fs.statSync(backup).size === 0) {
+  const errMsg = dump.stderr ? dump.stderr.toString().trim() : (dump.error ? dump.error.message : '未知错误')
+  console.error('pg_dump 详细错误信息:', errMsg)
+  throw new Error(`pg_dump 备份失败 (${errMsg})，已停止迁移。请检查 PostgreSQL 17 客户端、连接和备份目录`)
+}
 const pool = new pg.Pool(options)
 try {
   const client = await pool.connect()

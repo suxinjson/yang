@@ -22,18 +22,46 @@ fi
 
 # 在生产环境中确保数据库外部网络就绪与已有 db 容器接入
 if [ -z "${DEPLOY_TEST_SCENARIO:-}" ]; then
-  DB_NET="${GANG_DATABASE_NETWORK:-member_private}"
+  # 自动检测 db 容器所属的网络（排除 bridge 默认网络）
+  DETECTED_NET=$(docker inspect db --format '{{range $k, $v := .NetworkSettings.Networks}}{{if ne $k "bridge"}}{{$k}} {{end}}{{end}}' 2>/dev/null | awk '{print $1}' || true)
+  DB_NET="${GANG_DATABASE_NETWORK:-${DETECTED_NET:-member_private}}"
+  export GANG_DATABASE_NETWORK="$DB_NET"
+
   if ! docker network inspect "$DB_NET" >/dev/null 2>&1; then
     docker network create "$DB_NET" 2>/dev/null || true
   fi
   docker network connect "$DB_NET" db 2>/dev/null || true
 
-  # 自动检测并确保 PostgreSQL 独立业务账号与数据库存在
+  # 自动检测并确保 PostgreSQL 独立业务账号与数据库存在并同步密码
   if [ -n "${GANG_DATABASE_PASSWORD:-}" ]; then
-    docker exec -i db psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='${GANG_DATABASE_USER:-ganglegang_app}'" 2>/dev/null | grep -q 1 || \
-      docker exec -i db psql -U postgres -c "CREATE USER ${GANG_DATABASE_USER:-ganglegang_app} WITH PASSWORD '${GANG_DATABASE_PASSWORD}';" 2>/dev/null || true
-    docker exec -i db psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='${GANG_DATABASE_NAME:-ganglegang}'" 2>/dev/null | grep -q 1 || \
-      docker exec -i db psql -U postgres -c "CREATE DATABASE ${GANG_DATABASE_NAME:-ganglegang} OWNER ${GANG_DATABASE_USER:-ganglegang_app};" 2>/dev/null || true
+    DB_USER="${GANG_DATABASE_USER:-ganglegang_app}"
+    DB_NAME="${GANG_DATABASE_NAME:-ganglegang}"
+
+    # 尝试提取 db 容器内可能存在的超级用户密码
+    ROOT_PASS="${POSTGRES_PASSWORD:-$(docker inspect db --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | head -n1 | cut -d= -f2- || true)}"
+    EXEC_PSQL=(docker exec -i)
+    if [ -n "$ROOT_PASS" ]; then
+      EXEC_PSQL+=(-e "PGPASSWORD=$ROOT_PASS")
+    fi
+    EXEC_PSQL+=(db psql -U postgres)
+
+    # 确保用户存在且密码与 GANG_DATABASE_PASSWORD 同步
+    "${EXEC_PSQL[@]}" -c "
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
+    CREATE USER \"$DB_USER\" WITH PASSWORD '$GANG_DATABASE_PASSWORD';
+  ELSE
+    ALTER USER \"$DB_USER\" WITH PASSWORD '$GANG_DATABASE_PASSWORD';
+  END IF;
+END
+\$\$;" 2>/dev/null || true
+
+    # 确保数据库存在并授权拥有者
+    if ! "${EXEC_PSQL[@]}" -tc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null | grep -q 1; then
+      "${EXEC_PSQL[@]}" -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";" 2>/dev/null || true
+    fi
+    "${EXEC_PSQL[@]}" -c "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB_USER\";" 2>/dev/null || true
   fi
 fi
 
