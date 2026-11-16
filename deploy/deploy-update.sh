@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 载入生产 .env 文件（如果存在）
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 echo ">>> [1/2] 重新构建并平滑启动 Docker 服务..."
 if docker compose version >/dev/null 2>&1; then
   DOCKER_CMD=(docker compose)
@@ -10,6 +18,23 @@ else
   echo "❌ 错误：服务器上未安装 Docker Compose！"
   echo "请先在服务器上安装 Docker 与 Docker Compose 插件。"
   exit 1
+fi
+
+# 在生产环境中确保数据库外部网络就绪与已有 db 容器接入
+if [ -z "${DEPLOY_TEST_SCENARIO:-}" ]; then
+  DB_NET="${GANG_DATABASE_NETWORK:-member_private}"
+  if ! docker network inspect "$DB_NET" >/dev/null 2>&1; then
+    docker network create "$DB_NET" 2>/dev/null || true
+  fi
+  docker network connect "$DB_NET" db 2>/dev/null || true
+
+  # 自动检测并确保 PostgreSQL 独立业务账号与数据库存在
+  if [ -n "${GANG_DATABASE_PASSWORD:-}" ]; then
+    docker exec -i db psql -U postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='${GANG_DATABASE_USER:-ganglegang_app}'" 2>/dev/null | grep -q 1 || \
+      docker exec -i db psql -U postgres -c "CREATE USER ${GANG_DATABASE_USER:-ganglegang_app} WITH PASSWORD '${GANG_DATABASE_PASSWORD}';" 2>/dev/null || true
+    docker exec -i db psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname='${GANG_DATABASE_NAME:-ganglegang}'" 2>/dev/null | grep -q 1 || \
+      docker exec -i db psql -U postgres -c "CREATE DATABASE ${GANG_DATABASE_NAME:-ganglegang} OWNER ${GANG_DATABASE_USER:-ganglegang_app};" 2>/dev/null || true
+  fi
 fi
 
 # 构建失败时保留运行中的旧服务；记录旧镜像以便替换失败后恢复。
@@ -24,8 +49,8 @@ connect_caddy_networks() {
   if [ -n "${GANG_DATABASE_NETWORK:-}" ]; then
     docker network connect --alias ganglegang "$GANG_DATABASE_NETWORK" ganglegang 2>/dev/null || true
   fi
-  for DB_NET in $(docker inspect db --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
-    docker network connect --alias ganglegang "$DB_NET" ganglegang 2>/dev/null || true
+  for DB_NET_ITEM in $(docker inspect db --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
+    docker network connect --alias ganglegang "$DB_NET_ITEM" ganglegang 2>/dev/null || true
   done
 }
 
@@ -48,6 +73,12 @@ restore_on_failure() {
 }
 trap restore_on_failure EXIT
 
+# 在非测试环境执行数据库结构迁移（如果需要）
+if [ -z "${DEPLOY_TEST_SCENARIO:-}" ] && [ "${STORAGE_DRIVER:-}" = "postgres" ]; then
+  echo ">>> 执行数据库结构初始化与迁移 (npm run db:migrate)..."
+  "${DOCKER_CMD[@]}" run --rm --no-deps ganglegang npm run db:migrate || true
+fi
+
 # 新镜像已构建成功后，才处理手动运行的同名容器。
 if [ -n "$PREVIOUS_IMAGE" ]; then
   echo ">>> 检测到已有同名 ganglegang 容器，正在停止并移除旧容器以释放名称..."
@@ -56,7 +87,7 @@ fi
 
 "${DOCKER_CMD[@]}" up -d --no-build --remove-orphans --force-recreate
 
-# 自动将 ganglegang 接入 Caddy (member-web-1) 所在的 Docker 网络，确保容器间直接通过服务名通信
+# 自动将 ganglegang 接入 Caddy (member-web-1) 与数据库网络
 connect_caddy_networks
 
 # 自动检查并维护宿主机 Caddyfile 的 /gang 路由规则（防止被会员系统更新覆盖）

@@ -3,6 +3,7 @@ set -euo pipefail
 
 TARGET_DIR=${1:?Usage: install-update.sh deploy-directory update.tar.gz}
 BUNDLE=${2:?Missing update archive}
+ENV_BUNDLE=${3:-}
 
 mkdir -p "$TARGET_DIR"
 mkdir -p "$TARGET_DIR/data"
@@ -22,6 +23,12 @@ tar -xzf "$BUNDLE" -C "$STAGING"
 echo ">>> [2/3] 原子性同步更新生产文件..."
 # 保留现有的 data/ 文件夹（确保配置和心愿存折记录不被覆盖）
 cp -a "$STAGING/." "$TARGET_DIR/"
+
+# 若传入了包含数据库密码的环境变量文件，原子同步至 TARGET_DIR/.env
+if [ -n "$ENV_BUNDLE" ] && [ -f "$ENV_BUNDLE" ]; then
+  cp -f "$ENV_BUNDLE" "$TARGET_DIR/.env"
+  chmod 600 "$TARGET_DIR/.env"
+fi
 
 echo ">>> [3/3] 触发容器平滑构建与健康检查..."
 cd "$TARGET_DIR"

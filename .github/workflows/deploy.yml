@@ -43,6 +43,7 @@ jobs:
         SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
         SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
         SERVER_DEPLOY_PATH: ${{ secrets.SERVER_DEPLOY_PATH || '~/ganglegang' }}
+        GANG_DATABASE_PASSWORD: ${{ secrets.GANG_DATABASE_PASSWORD }}
       run: |
         set -euo pipefail
 
@@ -51,6 +52,7 @@ jobs:
         if [ -z "${SERVER_HOST:-}" ]; then MISSING_SECRETS="${MISSING_SECRETS} SERVER_HOST"; fi
         if [ -z "${SERVER_USER:-}" ]; then MISSING_SECRETS="${MISSING_SECRETS} SERVER_USER"; fi
         if [ -z "${SERVER_SSH_KEY:-}" ]; then MISSING_SECRETS="${MISSING_SECRETS} SERVER_SSH_KEY"; fi
+        if [ -z "${GANG_DATABASE_PASSWORD:-}" ]; then MISSING_SECRETS="${MISSING_SECRETS} GANG_DATABASE_PASSWORD"; fi
 
         if [ -n "$MISSING_SECRETS" ]; then
           echo "::error::缺少必需的 GitHub Actions Secrets 配置！"
@@ -64,11 +66,12 @@ jobs:
           echo "   https://github.com/${{ github.repository }}/settings/secrets/actions"
           echo ""
           echo "说明清单："
-          echo "   - SERVER_HOST:        服务器公网 IP 或域名 (如 123.45.67.89)"
-          echo "   - SERVER_USER:        SSH 登录用户名 (如 root 或 ubuntu)"
-          echo "   - SERVER_SSH_KEY:     SSH 私钥内容 (包含 -----BEGIN ... ----- 和 -----END ... -----)"
-          echo "   - SERVER_PORT:        (可选) SSH 端口号，默认 22"
-          echo "   - SERVER_DEPLOY_PATH: (可选) 服务器部署目录，默认 ~/ganglegang"
+          echo "   - SERVER_HOST:            服务器公网 IP 或域名 (如 123.45.67.89)"
+          echo "   - SERVER_USER:            SSH 登录用户名 (如 root 或 ubuntu)"
+          echo "   - SERVER_SSH_KEY:         SSH 私钥内容 (包含 -----BEGIN ... ----- 和 -----END ... -----)"
+          echo "   - GANG_DATABASE_PASSWORD: 生产环境 PostgreSQL 数据库专用连接密码"
+          echo "   - SERVER_PORT:            (可选) SSH 端口号，默认 22"
+          echo "   - SERVER_DEPLOY_PATH:     (可选) 服务器部署目录，默认 ~/ganglegang"
           echo "=========================================================================="
           exit 1
         fi
@@ -93,20 +96,40 @@ jobs:
         SCP_OPTS=(-i "$SSH_KEY_PATH" -P "$SERVER_PORT" -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$KNOWN_HOSTS_PATH" -o ConnectTimeout=15)
         REMOTE_TAR="/tmp/update-${GITHUB_RUN_ID}.tar.gz"
         REMOTE_SCRIPT="/tmp/install-${GITHUB_RUN_ID}.sh"
+        REMOTE_ENV="/tmp/env-${GITHUB_RUN_ID}"
 
-        echo ">>> [3/4] 上传升级包与安装脚本至服务器..."
+        echo ">>> [3/4] 上传升级包、安装脚本与数据库凭据至服务器..."
         if ! scp "${SCP_OPTS[@]}" "update-bundle.tar.gz" "$SERVER_USER@$SERVER_HOST:$REMOTE_TAR"; then
           echo "::error::SCP 上传失败！请检查服务器 IP、SSH 端口、用户名与密钥授权（~/.ssh/authorized_keys）。"
           exit 1
         fi
         scp "${SCP_OPTS[@]}" "deploy/install-update.sh" "$SERVER_USER@$SERVER_HOST:$REMOTE_SCRIPT"
 
+        # 生成用于生产环境的数据库与存储驱动环境变量文件
+        ENV_DEPLOY_PATH="$RUNNER_TEMP/.env.deploy"
+        cat > "$ENV_DEPLOY_PATH" <<EOF
+PORT=3000
+STORAGE_DRIVER=postgres
+PGHOST=db
+PGPORT=5432
+PGDATABASE=ganglegang
+PGUSER=ganglegang_app
+PGPASSWORD=${GANG_DATABASE_PASSWORD}
+GANG_DATABASE_NAME=ganglegang
+GANG_DATABASE_USER=ganglegang_app
+GANG_DATABASE_PASSWORD=${GANG_DATABASE_PASSWORD}
+GANG_DATABASE_NETWORK=member_private
+EOF
+        chmod 600 "$ENV_DEPLOY_PATH"
+        scp "${SCP_OPTS[@]}" "$ENV_DEPLOY_PATH" "$SERVER_USER@$SERVER_HOST:$REMOTE_ENV"
+        rm -f "$ENV_DEPLOY_PATH"
+
         echo ">>> [4/4] 触发加锁安装与健康探测..."
-        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "bash $REMOTE_SCRIPT $SERVER_DEPLOY_PATH $REMOTE_TAR"
+        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "bash $REMOTE_SCRIPT $SERVER_DEPLOY_PATH $REMOTE_TAR $REMOTE_ENV"
 
         # 清理远程临时文件
-        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "rm -f $REMOTE_TAR $REMOTE_SCRIPT"
+        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "rm -f $REMOTE_TAR $REMOTE_SCRIPT $REMOTE_ENV"
 
     - name: 6. 清理临时凭据
       if: ${{ always() }}
-      run: rm -f "$RUNNER_TEMP/deploy_id_ed25519" "$RUNNER_TEMP/known_hosts"
+      run: rm -f "$RUNNER_TEMP/deploy_id_ed25519" "$RUNNER_TEMP/known_hosts" "$RUNNER_TEMP/.env.deploy"
