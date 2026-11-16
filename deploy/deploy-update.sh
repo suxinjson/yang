@@ -22,28 +22,47 @@ fi
 
 # 在生产环境中确保数据库外部网络就绪与已有 db 容器接入
 if [ -z "${DEPLOY_TEST_SCENARIO:-}" ]; then
-  # 自动检测 db 容器所属的网络（排除 bridge 默认网络）
-  DETECTED_NET=$(docker inspect db --format '{{range $k, $v := .NetworkSettings.Networks}}{{if ne $k "bridge"}}{{$k}} {{end}}{{end}}' 2>/dev/null | awk '{print $1}' || true)
+  # 自动定位宿主机上的数据库容器名称（如 member-db-1, member_db_1, db 等）
+  DB_CONTAINER=""
+  if docker inspect db >/dev/null 2>&1; then
+    DB_CONTAINER="db"
+  elif docker inspect member-db-1 >/dev/null 2>&1; then
+    DB_CONTAINER="member-db-1"
+  elif docker inspect member_db_1 >/dev/null 2>&1; then
+    DB_CONTAINER="member_db_1"
+  else
+    DB_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E '(^|[-_])(db|postgres)([-_]|$)' | head -n1 || true)
+  fi
+
+  # 自动检测数据库容器所属网络
+  DETECTED_NET=""
+  if [ -n "$DB_CONTAINER" ]; then
+    DETECTED_NET=$(docker inspect "$DB_CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{if ne $k "bridge"}}{{$k}} {{end}}{{end}}' 2>/dev/null | awk '{print $1}' || true)
+  fi
   DB_NET="${GANG_DATABASE_NETWORK:-${DETECTED_NET:-member_private}}"
   export GANG_DATABASE_NETWORK="$DB_NET"
 
   if ! docker network inspect "$DB_NET" >/dev/null 2>&1; then
     docker network create "$DB_NET" 2>/dev/null || true
   fi
-  docker network connect "$DB_NET" db 2>/dev/null || true
+  if [ -n "$DB_CONTAINER" ]; then
+    docker network connect "$DB_NET" "$DB_CONTAINER" 2>/dev/null || true
+  fi
 
   # 自动检测并确保 PostgreSQL 独立业务账号与数据库存在并同步密码
-  if [ -n "${GANG_DATABASE_PASSWORD:-}" ]; then
+  if [ -n "${GANG_DATABASE_PASSWORD:-}" ] && [ -n "$DB_CONTAINER" ]; then
     DB_USER="${GANG_DATABASE_USER:-ganglegang_app}"
     DB_NAME="${GANG_DATABASE_NAME:-ganglegang}"
 
+    echo ">>> 定位到数据库容器: $DB_CONTAINER，正在同步数据库用户 $DB_USER..."
+
     # 尝试提取 db 容器内可能存在的超级用户密码
-    ROOT_PASS="${POSTGRES_PASSWORD:-$(docker inspect db --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | head -n1 | cut -d= -f2- || true)}"
+    ROOT_PASS="${POSTGRES_PASSWORD:-$(docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | head -n1 | cut -d= -f2- || true)}"
     EXEC_PSQL=(docker exec -i)
     if [ -n "$ROOT_PASS" ]; then
       EXEC_PSQL+=(-e "PGPASSWORD=$ROOT_PASS")
     fi
-    EXEC_PSQL+=(db psql -U postgres)
+    EXEC_PSQL+=("$DB_CONTAINER" psql -U postgres)
 
     # 确保用户存在且密码与 GANG_DATABASE_PASSWORD 同步
     "${EXEC_PSQL[@]}" -c "
@@ -77,9 +96,11 @@ connect_caddy_networks() {
   if [ -n "${GANG_DATABASE_NETWORK:-}" ]; then
     docker network connect --alias ganglegang "$GANG_DATABASE_NETWORK" ganglegang 2>/dev/null || true
   fi
-  for DB_NET_ITEM in $(docker inspect db --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
-    docker network connect --alias ganglegang "$DB_NET_ITEM" ganglegang 2>/dev/null || true
-  done
+  if [ -n "${DB_CONTAINER:-}" ]; then
+    for DB_NET_ITEM in $(docker inspect "$DB_CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null); do
+      docker network connect --alias ganglegang "$DB_NET_ITEM" ganglegang 2>/dev/null || true
+    done
+  fi
 }
 
 restore_on_failure() {
