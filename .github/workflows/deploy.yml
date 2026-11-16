@@ -107,19 +107,19 @@ jobs:
 
         # 生成用于生产环境的数据库与存储驱动环境变量文件
         ENV_DEPLOY_PATH="$RUNNER_TEMP/.env.deploy"
-        cat > "$ENV_DEPLOY_PATH" <<EOF
-PORT=3000
-STORAGE_DRIVER=postgres
-PGHOST=db
-PGPORT=5432
-PGDATABASE=ganglegang
-PGUSER=ganglegang_app
-PGPASSWORD=${GANG_DATABASE_PASSWORD}
-GANG_DATABASE_NAME=ganglegang
-GANG_DATABASE_USER=ganglegang_app
-GANG_DATABASE_PASSWORD=${GANG_DATABASE_PASSWORD}
-GANG_DATABASE_NETWORK=member_private
-EOF
+        {
+          echo "PORT=3000"
+          echo "STORAGE_DRIVER=postgres"
+          echo "PGHOST=db"
+          echo "PGPORT=5432"
+          echo "PGDATABASE=ganglegang"
+          echo "PGUSER=ganglegang_app"
+          echo "PGPASSWORD=${GANG_DATABASE_PASSWORD}"
+          echo "GANG_DATABASE_NAME=ganglegang"
+          echo "GANG_DATABASE_USER=ganglegang_app"
+          echo "GANG_DATABASE_PASSWORD=${GANG_DATABASE_PASSWORD}"
+          echo "GANG_DATABASE_NETWORK=member_private"
+        } > "$ENV_DEPLOY_PATH"
         chmod 600 "$ENV_DEPLOY_PATH"
         scp "${SCP_OPTS[@]}" "$ENV_DEPLOY_PATH" "$SERVER_USER@$SERVER_HOST:$REMOTE_ENV"
         rm -f "$ENV_DEPLOY_PATH"
