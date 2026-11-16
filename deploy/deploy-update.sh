@@ -56,13 +56,19 @@ if [ -z "${DEPLOY_TEST_SCENARIO:-}" ]; then
 
     echo ">>> 定位到数据库容器: $DB_CONTAINER，正在同步数据库用户 $DB_USER..."
 
-    # 尝试提取 db 容器内可能存在的超级用户密码
+    # 自动提取容器内的超级用户账号、初始数据库与密码
+    ADMIN_USER=$(docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_USER=' | head -n1 | cut -d= -f2- || true)
+    ADMIN_USER="${ADMIN_USER:-postgres}"
+
+    ADMIN_DB=$(docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_DB=' | head -n1 | cut -d= -f2- || true)
+    ADMIN_DB="${ADMIN_DB:-template1}"
+
     ROOT_PASS="${POSTGRES_PASSWORD:-$(docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | head -n1 | cut -d= -f2- || true)}"
     EXEC_PSQL=(docker exec -i)
     if [ -n "$ROOT_PASS" ]; then
       EXEC_PSQL+=(-e "PGPASSWORD=$ROOT_PASS")
     fi
-    EXEC_PSQL+=("$DB_CONTAINER" psql -U postgres)
+    EXEC_PSQL+=("$DB_CONTAINER" psql -U "$ADMIN_USER" -d "$ADMIN_DB")
 
     # 确保用户存在且密码与 GANG_DATABASE_PASSWORD 同步
     "${EXEC_PSQL[@]}" -c "
