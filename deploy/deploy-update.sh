@@ -65,14 +65,14 @@ if [ -z "${DEPLOY_TEST_SCENARIO:-}" ]; then
     ADMIN_DB="${ADMIN_DB:-template1}"
 
     ROOT_PASS="${POSTGRES_PASSWORD:-$(docker inspect "$DB_CONTAINER" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^POSTGRES_PASSWORD=' | head -n1 | cut -d= -f2- || true)}"
-    EXEC_PSQL=(docker exec -i)
+    EXEC_PSQL=(docker exec)
     if [ -n "$ROOT_PASS" ]; then
       EXEC_PSQL+=(-e "PGPASSWORD=$ROOT_PASS")
     fi
-    EXEC_PSQL+=("$DB_CONTAINER" psql -U "$ADMIN_USER" -d "$ADMIN_DB")
+    EXEC_PSQL+=(-e "PGCONNECT_TIMEOUT=5" "$DB_CONTAINER" psql -w -U "$ADMIN_USER" -d "$ADMIN_DB")
 
     # 确保用户存在且密码与 GANG_DATABASE_PASSWORD 同步
-    "${EXEC_PSQL[@]}" -c "
+    timeout 15 "${EXEC_PSQL[@]}" -c "
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
@@ -84,10 +84,10 @@ END
 \$\$;" 2>/dev/null || true
 
     # 确保数据库存在并授权拥有者
-    if ! "${EXEC_PSQL[@]}" -tc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null | grep -q 1; then
-      "${EXEC_PSQL[@]}" -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";" 2>/dev/null || true
+    if ! timeout 15 "${EXEC_PSQL[@]}" -tc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null | grep -q 1; then
+      timeout 15 "${EXEC_PSQL[@]}" -c "CREATE DATABASE \"$DB_NAME\" OWNER \"$DB_USER\";" 2>/dev/null || true
     fi
-    "${EXEC_PSQL[@]}" -c "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB_USER\";" 2>/dev/null || true
+    timeout 15 "${EXEC_PSQL[@]}" -c "GRANT ALL PRIVILEGES ON DATABASE \"$DB_NAME\" TO \"$DB_USER\";" 2>/dev/null || true
   fi
 fi
 
@@ -129,18 +129,18 @@ restore_on_failure() {
 }
 trap restore_on_failure EXIT
 
-# 新镜像已构建成功后，才处理手动运行的同名容器。
-if [ -n "$PREVIOUS_IMAGE" ]; then
-  echo ">>> 检测到已有同名 ganglegang 容器，正在停止并移除旧容器以释放名称..."
-  docker stop --time 30 ganglegang
-  docker rm -f ganglegang
+# 新镜像已构建成功后，停止并移除旧容器以释放名称与数据库连接。
+if docker inspect ganglegang >/dev/null 2>&1; then
+  echo ">>> 检测到已有同名 ganglegang 容器，正在停止并移除旧容器以释放名称与连接..."
+  docker stop --time 15 ganglegang 2>/dev/null || true
+  docker rm -f ganglegang 2>/dev/null || true
 fi
 
 # The old coordinator must release its advisory lock before backup and migration.
 # A failed backup or migration stops deployment and triggers image rollback.
 if [ "${STORAGE_DRIVER:-}" = "postgres" ]; then
   echo ">>> 执行数据库结构初始化与迁移 (npm run db:migrate)..."
-  "${DOCKER_CMD[@]}" run --rm --no-deps ganglegang npm run db:migrate
+  timeout 60 "${DOCKER_CMD[@]}" run --rm --no-deps ganglegang npm run db:migrate
 fi
 
 "${DOCKER_CMD[@]}" up -d --no-build --remove-orphans --force-recreate

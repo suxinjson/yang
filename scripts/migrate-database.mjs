@@ -9,9 +9,9 @@ const directory = path.resolve(process.env.BACKUP_DIR || 'data/backups')
 fs.mkdirSync(directory, { recursive: true })
 const backup = path.join(directory, 'ganglegang-' + new Date().toISOString().replace(/[:.]/g, '-') + '.dump')
 const connection = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null
-const env = { ...process.env, ...(connection ? { PGHOST: connection.hostname, PGPORT: connection.port || '5432', PGDATABASE: decodeURIComponent(connection.pathname.slice(1)), PGUSER: decodeURIComponent(connection.username), PGPASSWORD: decodeURIComponent(connection.password) } : {}) }
+const env = { ...process.env, PGCONNECT_TIMEOUT: '10', ...(connection ? { PGHOST: connection.hostname, PGPORT: connection.port || '5432', PGDATABASE: decodeURIComponent(connection.pathname.slice(1)), PGUSER: decodeURIComponent(connection.username), PGPASSWORD: decodeURIComponent(connection.password) } : {}) }
 // Passwords stay in the child environment, never command arguments or logs.
-const dump = spawnSync(process.env.PG_DUMP_BIN || 'pg_dump', ['--format=custom', '--file', backup], { env, stdio: ['ignore', 'ignore', 'pipe'] })
+const dump = spawnSync(process.env.PG_DUMP_BIN || 'pg_dump', ['-w', '--format=custom', '--file', backup], { env, timeout: 30000, stdio: ['ignore', 'ignore', 'pipe'] })
 if (dump.error || dump.status !== 0 || !fs.existsSync(backup) || fs.statSync(backup).size === 0) {
   const errMsg = dump.stderr ? dump.stderr.toString().trim() : (dump.error ? dump.error.message : '未知错误')
   console.error('pg_dump 详细错误信息:', errMsg)

@@ -7,12 +7,13 @@ on:
 
 concurrency:
   group: deploy-${{ github.repository }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   android:
     name: 构建 Android 更新包
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
     - uses: actions/checkout@v4
       with:
@@ -81,6 +82,7 @@ jobs:
     name: 编译打包与远程发布
     needs: android
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
     - name: 1. 拉取源码
       uses: actions/checkout@v4
@@ -223,7 +225,7 @@ jobs:
         rm -f "$ENV_DEPLOY_PATH"
 
         echo ">>> [4/4] 触发加锁安装与健康探测..."
-        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "bash $REMOTE_SCRIPT $SERVER_DEPLOY_PATH $REMOTE_TAR $REMOTE_ENV"
+        ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "timeout 300 bash $REMOTE_SCRIPT $SERVER_DEPLOY_PATH $REMOTE_TAR $REMOTE_ENV"
 
         # 清理远程临时文件
         ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "rm -f $REMOTE_TAR $REMOTE_SCRIPT $REMOTE_ENV"
