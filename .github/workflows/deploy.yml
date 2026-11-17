@@ -55,7 +55,16 @@ jobs:
         sed -i -e 's/\r$//' ./android/gradlew
         chmod +x ./android/gradlew
         export YANG_ANDROID_KEYSTORE="$PWD/release.jks"
-        ./android/gradlew -p android assembleRelease --console=plain --stacktrace
+        set -o pipefail
+        if ! ./android/gradlew -p android assembleRelease --console=plain --stacktrace 2>&1 | tee /tmp/gradle.log; then
+          echo "### ❌ Gradle 打包失败日志" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 80 /tmp/gradle.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          LAST_ERR=$(grep -m 1 -E '(FAILURE|FAILED|Execution failed|What went wrong)' /tmp/gradle.log || tail -n 1 /tmp/gradle.log)
+          echo "::error title=Gradle Error::$LAST_ERR"
+          exit 1
+        fi
         mkdir -p artifacts/android-release
         node scripts/android-release.mjs manifest android/app/build/outputs/apk/release/app-release.apk artifacts/android-release
     - uses: actions/upload-artifact@v4
