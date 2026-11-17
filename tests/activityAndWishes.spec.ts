@@ -74,14 +74,25 @@ test('native lifecycle callbacks distinguish background, foreground and explicit
       win.androidBridge = {}; win.nativeListeners = {}; win.nativeExited = false
       win.Capacitor = {
         PluginHeaders: [{ name: 'App', methods: [{ name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'promise' }, { name: 'exitApp', rtype: 'promise' }] }],
-        nativeCallback: (_plugin: string, _method: string, options: any, callback: any) => { win.nativeListeners[options.eventName] = callback; return Promise.resolve(options.eventName) },
+        nativeCallback: (_plugin: string, _method: string, options: any, callback: any) => {
+          const prev = win.nativeListeners[options.eventName]
+          win.nativeListeners[options.eventName] = prev ? (data: any) => { prev(data); callback(data) } : callback
+          return Promise.resolve(options.eventName)
+        },
         nativePromise: (_plugin: string, method: string) => { if (method === 'exitApp') win.nativeExited = true; return Promise.resolve() }
       }
     })
     await server.attach(page)
     let loseAck = true
     await page.route('**/api/client/lifecycle', async route => {
-      if (!loseAck) return route.fallback()
+      if (!loseAck) {
+        try {
+          const response = await route.fetch({ url: server.base + '/api/client/lifecycle' })
+          return await route.fulfill({ response })
+        } catch {
+          return await route.abort().catch(() => {})
+        }
+      }
       loseAck = false
       await server.post('/api/client/lifecycle', route.request().postDataJSON())
       await route.abort()

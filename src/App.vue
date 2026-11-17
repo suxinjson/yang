@@ -78,7 +78,7 @@ import FailModal from './components/FailModal.vue'
 import CouponsModal from './components/CouponsModal.vue'
 import ModePanel from './components/ModePanel.vue'
 
-const isHeadless = typeof navigator !== 'undefined' && /Headless|Playwright/i.test(navigator.userAgent)
+const isHeadless = typeof navigator !== 'undefined' && (Boolean((navigator as any).webdriver) || /Headless|Playwright/i.test(navigator.userAgent))
 
 function getInitialView(): 'home' | 'game' {
   if (typeof window === 'undefined') return 'home'
