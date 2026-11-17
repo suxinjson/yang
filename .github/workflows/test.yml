@@ -1,0 +1,24 @@
+name: 端到端测试
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  playwright:
+    name: Playwright UI 回归测试
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: 'npm'
+    - name: 安装依赖
+      run: |
+        npm ci
+        npx playwright install --with-deps chromium
+    - name: 运行 Playwright 测试
+      env:
+        PLAYWRIGHT_CHANNEL: chromium
+      run: npm test -- --reporter=line
