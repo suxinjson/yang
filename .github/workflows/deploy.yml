@@ -37,6 +37,7 @@ jobs:
         if [ -z "$YANG_ANDROID_KEYSTORE" ]; then echo '请配置 Android 签名 Secrets'; exit 1; fi
         echo "$YANG_ANDROID_KEYSTORE" | base64 -d > release.jks
         export YANG_ANDROID_KEYSTORE="$PWD/release.jks"
+        chmod +x ./android/gradlew
         ./android/gradlew -p android assembleRelease --console=plain
         mkdir -p artifacts/android-release
         node scripts/android-release.mjs manifest android/app/build/outputs/apk/release/app-release.apk artifacts/android-release
@@ -79,17 +80,21 @@ jobs:
         npm run test:inventory
         npm test -- --reporter=line
 
-    - name: 4. 准备部署压缩包
+    - name: 4. 下载 Android 构建产物
+      uses: actions/download-artifact@v4
+      with:
+        name: ganglegang-android-release
+        path: artifacts/android-release
+
+    - name: 5. 准备部署压缩包
       run: |
-        mkdir -p artifacts/android-release
-        gh run download "${{ github.run_id }}" -n ganglegang-android-release -D artifacts/android-release || true
         mkdir -p deploy_bundle
         # 打包生产运行必需的精简产物
         cp -r dist public shared server.js deploy scripts Dockerfile compose.yaml package.json package-lock.json deploy_bundle/
         if [ -d artifacts/android-release ]; then mkdir -p deploy_bundle/app-releases; cp artifacts/android-release/* deploy_bundle/app-releases/; fi
         tar -czf "update-bundle.tar.gz" -C deploy_bundle .
 
-    - name: 5. 远程 SSH 部署到服务器
+    - name: 6. 远程 SSH 部署到服务器
       env:
         SERVER_HOST: ${{ secrets.SERVER_HOST }}
         SERVER_USER: ${{ secrets.SERVER_USER }}
@@ -193,6 +198,6 @@ jobs:
         # 清理远程临时文件
         ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "rm -f $REMOTE_TAR $REMOTE_SCRIPT $REMOTE_ENV"
 
-    - name: 6. 清理临时凭据
+    - name: 7. 清理临时凭据
       if: ${{ always() }}
       run: rm -f "$RUNNER_TEMP/deploy_id_ed25519" "$RUNNER_TEMP/known_hosts" "$RUNNER_TEMP/.env.deploy"
