@@ -188,8 +188,8 @@ jobs:
         fi
         chmod 600 "$KNOWN_HOSTS_PATH"
 
-        SSH_OPTS=(-i "$SSH_KEY_PATH" -p "$SERVER_PORT" -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$KNOWN_HOSTS_PATH" -o ConnectTimeout=15)
-        SCP_OPTS=(-i "$SSH_KEY_PATH" -P "$SERVER_PORT" -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$KNOWN_HOSTS_PATH" -o ConnectTimeout=15)
+        SSH_OPTS=(-i "$SSH_KEY_PATH" -p "$SERVER_PORT" -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$KNOWN_HOSTS_PATH" -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=30)
+        SCP_OPTS=(-i "$SSH_KEY_PATH" -P "$SERVER_PORT" -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$KNOWN_HOSTS_PATH" -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=30)
         REMOTE_TAR="/tmp/update-${GITHUB_RUN_ID}.tar.gz"
         REMOTE_SCRIPT="/tmp/install-${GITHUB_RUN_ID}.sh"
         REMOTE_ENV="/tmp/env-${GITHUB_RUN_ID}"

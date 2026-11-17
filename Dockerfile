@@ -1,11 +1,13 @@
 FROM node:22-alpine3.22
 
 WORKDIR /app
-RUN apk add --no-cache postgresql17-client
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+    && apk add --no-cache postgresql17-client
 
 # Install production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm config set registry https://registry.npmmirror.com \
+    && npm ci --omit=dev
 
 # Copy built frontend, static assets, and backend server
 COPY dist ./dist
