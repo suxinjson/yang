@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
+      with:
+        lfs: true
     - uses: actions/setup-node@v4
       with:
         node-version: 22
@@ -54,6 +56,9 @@ jobs:
         yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
         sed -i -e 's/\r$//' ./android/gradlew
         chmod +x ./android/gradlew
+        if grep -q "git-lfs" ./android/gradle/wrapper/gradle-wrapper.jar 2>/dev/null; then
+          curl -sL https://raw.githubusercontent.com/gradle/gradle/v8.11.1/gradle/wrapper/gradle-wrapper.jar -o ./android/gradle/wrapper/gradle-wrapper.jar
+        fi
         export YANG_ANDROID_KEYSTORE="$PWD/release.jks"
         set -o pipefail
         if ! ./android/gradlew -p android assembleRelease --console=plain --stacktrace 2>&1 | tee /tmp/gradle.log; then
@@ -79,6 +84,8 @@ jobs:
     steps:
     - name: 1. 拉取源码
       uses: actions/checkout@v4
+      with:
+        lfs: true
 
     - name: 2. 安装 Node.js 环境
       uses: actions/setup-node@v4

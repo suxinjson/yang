@@ -6,3 +6,4 @@
 *.png filter=lfs diff=lfs merge=binary -text
 *.gz filter=lfs diff=lfs merge=binary -text
 *.jar filter=lfs diff=lfs merge=binary -text
+android/gradle/wrapper/gradle-wrapper.jar !filter !diff !merge -text
