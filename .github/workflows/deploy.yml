@@ -34,11 +34,28 @@ jobs:
         YANG_ANDROID_KEY_PASSWORD: ${{ secrets.YANG_ANDROID_KEY_PASSWORD }}
         YANG_ANDROID_KEY_ALIAS: ${{ secrets.YANG_ANDROID_KEY_ALIAS }}
       run: |
-        if [ -z "$YANG_ANDROID_KEYSTORE" ]; then echo '请配置 Android 签名 Secrets'; exit 1; fi
-        echo "$YANG_ANDROID_KEYSTORE" | base64 -d > release.jks
-        export YANG_ANDROID_KEYSTORE="$PWD/release.jks"
+        MISSING_SIGNING=""
+        if [ -z "$YANG_ANDROID_KEYSTORE" ]; then MISSING_SIGNING="$MISSING_SIGNING YANG_ANDROID_KEYSTORE_BASE64"; fi
+        if [ -z "$YANG_ANDROID_STORE_PASSWORD" ]; then MISSING_SIGNING="$MISSING_SIGNING YANG_ANDROID_STORE_PASSWORD"; fi
+        if [ -z "$YANG_ANDROID_KEY_PASSWORD" ]; then MISSING_SIGNING="$MISSING_SIGNING YANG_ANDROID_KEY_PASSWORD"; fi
+        if [ -z "$YANG_ANDROID_KEY_ALIAS" ]; then MISSING_SIGNING="$MISSING_SIGNING YANG_ANDROID_KEY_ALIAS"; fi
+        if [ -n "$MISSING_SIGNING" ]; then
+          echo "::error::缺少必需的 Android 签名 Secrets: $MISSING_SIGNING"
+          exit 1
+        fi
+        printf '%s' "$YANG_ANDROID_KEYSTORE" | tr -d '\r\n ' | base64 -d > release.jks || {
+          echo "::error::Base64 解码 release.jks 失败，请确认 YANG_ANDROID_KEYSTORE_BASE64 有效"
+          exit 1
+        }
+        if [ ! -s release.jks ]; then
+          echo "::error::解码生成的 release.jks 文件大小为 0，请检查 Secret 内容"
+          exit 1
+        fi
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || true
+        sed -i -e 's/\r$//' ./android/gradlew
         chmod +x ./android/gradlew
-        ./android/gradlew -p android assembleRelease --console=plain
+        export YANG_ANDROID_KEYSTORE="$PWD/release.jks"
+        ./android/gradlew -p android assembleRelease --console=plain --stacktrace
         mkdir -p artifacts/android-release
         node scripts/android-release.mjs manifest android/app/build/outputs/apk/release/app-release.apk artifacts/android-release
     - uses: actions/upload-artifact@v4
