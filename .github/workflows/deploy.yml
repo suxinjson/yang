@@ -111,7 +111,16 @@ jobs:
         SH
         chmod +x "$PG_DUMP_BIN"
         npm run test:inventory
-        npm test -- --reporter=line
+        set -o pipefail
+        if ! npm test -- --reporter=line 2>&1 | tee /tmp/playwright.log; then
+          echo "### ❌ Playwright 回归测试失败" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          tail -n 80 /tmp/playwright.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          LAST_FAIL=$(grep -m 1 -E '(Error:|failed|FAIL)' /tmp/playwright.log || tail -n 1 /tmp/playwright.log)
+          echo "::error title=Playwright Test Failure::$LAST_FAIL"
+          exit 1
+        fi
 
     - name: 4. 下载 Android 构建产物
       uses: actions/download-artifact@v4
