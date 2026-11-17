@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="panel-header">
         <div class="flex items-center gap-2">
-          <span class="header-icon">🪞</span>
+          <span class="header-icon"><DesignIcon name="mirror" /></span>
           <div>
             <h2 class="text-base font-bold text-stone-800 leading-tight">形象捏脸与高级换装间</h2>
             <p class="text-[11px] text-stone-500">定制独一无二的高级感专属形象，随心搭配衣帽间</p>
@@ -21,6 +21,7 @@
           <PaperDoll
             :width="150"
             :height="225"
+            :gender="currentGender"
             :skin="currentSkin"
             :eye-color="currentEyeColor"
             :hair-color="currentHairColor"
@@ -30,7 +31,7 @@
 
           <!-- Quick Aesthetic Badge -->
           <div class="aesthetic-pill mt-3">
-            <span class="sparkle">✨</span>
+            <span class="sparkle"><DesignIcon name="spark" /></span>
             <span class="text-[11px] font-semibold text-stone-600">实时高级渲染</span>
           </div>
         </div>
@@ -44,19 +45,42 @@
               :class="{ active: activeSection === 'face' }"
               @click="activeSection = 'face'"
             >
-              <span>🎨</span> 捏脸五官
+              <span><DesignIcon name="spark" /></span> 捏脸五官
             </button>
             <button
               class="nav-tab-btn"
               :class="{ active: activeSection === 'clothes' }"
               @click="activeSection = 'clothes'"
             >
-              <span>👗</span> 衣橱穿搭
+              <span><DesignIcon name="shirt" /></span> 衣橱穿搭
             </button>
           </div>
 
           <!-- Section A: 捏脸五官 (Face, Skin, Eyes, Lips, Hair Color) -->
           <div v-if="activeSection === 'face'" class="section-content">
+            <!-- 0. Gender / Figure -->
+            <div class="option-group">
+              <label class="group-label">身形气质</label>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition"
+                  :class="currentGender === 'male' ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-sm' : 'bg-stone-50 border-stone-200 text-stone-600'"
+                  @click="currentGender = 'male'"
+                >
+                  <span><DesignIcon name="user" /></span> 阳光帅气
+                </button>
+                <button
+                  type="button"
+                  class="px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition"
+                  :class="currentGender === 'female' ? 'bg-pink-100 border-pink-400 text-pink-900 shadow-sm' : 'bg-stone-50 border-stone-200 text-stone-600'"
+                  @click="currentGender = 'female'"
+                >
+                  <span><DesignIcon name="user" /></span> 甜美灵动
+                </button>
+              </div>
+            </div>
+
             <!-- 1. Skin Tone -->
             <div class="option-group">
               <label class="group-label">肤色基调</label>
@@ -155,7 +179,7 @@
                 :class="{ equipped: isEquipped(item.catalogId) }"
                 @click="toggleEquip(item.catalogId)"
               >
-                <div class="card-icon">{{ item.metadata?.icon || '👗' }}</div>
+                <div class="card-icon"><ModelPreview :catalog-id="item.catalogId" :width="76" :height="88" :options="{gender:currentGender,skin:currentSkin,hairColor:currentHairColor}" /></div>
                 <div class="card-name">{{ item.metadata?.name || item.catalogId }}</div>
                 <div class="card-badge">
                   <span v-if="isEquipped(item.catalogId)" class="badge-equipped">穿戴中</span>
@@ -184,13 +208,15 @@
 </template>
 
 <script setup lang="ts">
+import DesignIcon from '../DesignIcon.vue'
+import ModelPreview from './ModelPreview.vue'
 import { ref, computed } from 'vue'
 import PaperDoll from './PaperDoll.vue'
 import {
   platformOverview,
-  updateAvatarFeatures,
-  equipAvatarItem
+  saveAvatarAll
 } from '../../utils/platformState'
+import { getStoredAuthUser } from '../../utils/backpack'
 
 const emit = defineEmits(['close'])
 
@@ -239,11 +265,17 @@ const slotTabs = [
   { key: 'accessory', label: '饰品', icon: '👓' }
 ]
 
-// Current state
-const currentSkin = ref(platformOverview.value?.avatar?.features?.skin || '#ffdbac')
-const currentEyeColor = ref('#4e342e')
-const currentHairColor = ref('#2b2320')
-const currentLipColor = ref('#e57373')
+// Current state (Hydrated from saved features)
+const authUser = getStoredAuthUser()
+const existingFeatures: any = platformOverview.value?.avatar?.features || {}
+
+const currentGender = ref<'male' | 'female'>(
+  existingFeatures.gender === 'male' || authUser?.gender === 'male' ? 'male' : 'female'
+)
+const currentSkin = ref(existingFeatures.skin || (currentGender.value === 'female' ? '#ffd1dc' : '#ffdbac'))
+const currentEyeColor = ref(existingFeatures.eyeColor || (currentGender.value === 'male' ? '#3a506b' : '#4e342e'))
+const currentHairColor = ref(existingFeatures.hairColor || '#2b2320')
+const currentLipColor = ref(existingFeatures.lipColor || (currentGender.value === 'male' ? '#c08081' : '#e57373'))
 
 const currentSlots = ref<Record<string, string | null>>({
   ...(platformOverview.value?.avatar?.equippedSlots || {})
@@ -275,14 +307,13 @@ function toggleEquip(catalogId: string) {
 async function handleSave() {
   try {
     saving.value = true
-    await updateAvatarFeatures({
-      skin: currentSkin.value
-    })
-    for (const [slot, catalogId] of Object.entries(currentSlots.value)) {
-      if (catalogId) {
-        await equipAvatarItem(catalogId, slot)
-      }
-    }
+    await saveAvatarAll({
+      gender: currentGender.value,
+      skin: currentSkin.value,
+      hairColor: currentHairColor.value,
+      eyeColor: currentEyeColor.value,
+      lipColor: currentLipColor.value
+    }, currentSlots.value)
     emit('close')
   } catch (err: any) {
     alert(err.message || '保存形象失败')

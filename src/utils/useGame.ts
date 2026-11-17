@@ -5,14 +5,14 @@ import { applyGameAction, createGame, settleGame, type GameAction, type GameStat
 import { getBoardLayout } from '../../shared/boardGeometry.js'
 import { loadAdminConfig, acceptServerConfig } from './adminConfig'
 import { loadCardDefinitions } from './cardThemes'
-import { personalBackpack } from './backpack'
+import { personalBackpack, accountGeneration } from './backpack'
 import { getBaseUrl } from './api'
 import { serverState, acceptServerState } from './serverState'
 import { actionBusy, operationError } from './clientSession'
 import { playMode, roomInfo, roomGame, roomConnection, roomBusy, serverOffset, playPost, createRoom, joinRoom, retryRoomEntry, resumeRoom, stopRoom, leaveRoom, reconnectRoom, sendRoomAction } from './playSession'
 import { sound } from './sound'
 
-type SoloSave = { game: GameState; token: string; practice: boolean; pending?: { operationId: string; action: GameAction }; finishAck?: string; blockedPending?: boolean; blockedAck?: boolean }
+type SoloSave = { game: GameState; token: string; practice: boolean; actions?: (GameAction & { operationId?: string })[]; pending?: { operationId: string; action: GameAction }; finishAck?: string; blockedPending?: boolean; blockedAck?: boolean }
 const SOLO_KEY = 'gang_solo_v2'
 export function useGame() {
   const currentAdminConfig = ref(loadAdminConfig()), cardDefs = ref(loadCardDefinitions())
@@ -87,7 +87,9 @@ export function useGame() {
     if (modal === 'coupons') solo.value.game.modal = modal
     persist()
   }
+  watch(accountGeneration, () => { initLevel(1); operationError.value = ''; rewardPending.value = false }, { flush: 'sync' })
   async function startSolo(level = 1, initial = false) {
+    const generation = accountGeneration.value
     if (settle) clearTimeout(settle)
     const key = 'gang_solo_start_operation_' + level, operationId = localStorage.getItem(key) || crypto.randomUUID()
     localStorage.setItem(key, operationId)
@@ -95,8 +97,9 @@ export function useGame() {
       const data = await playPost('solo/start', { operationId, level }, initial ? 3000 : 8000)
       if (!data.game?.roundId || !data.token) throw new Error('后台需要更新后才能记录本关')
       if (solo.value.game.modal === 'coupons') data.game.modal = 'coupons'
-      solo.value = { game: data.game, token: data.token, practice: false }; persist(); localStorage.removeItem(key)
+      solo.value = { game: data.game, token: data.token, practice: false, actions: [] }; persist(); localStorage.removeItem(key)
     } catch (error) {
+      if (generation !== accountGeneration.value) return
       if ((error as { status?: number }).status === 409) localStorage.removeItem(key)
       if (initial || solo.value.practice) { initLevel(level); showSlotToast('当前为本地练习；联网后重开即可使用道具与获得心愿券') }
       else { scheduleResolve(); throw error }
@@ -119,15 +122,16 @@ export function useGame() {
     rewardPending.value = true
     const saved = solo.value, roundId = saved.game.roundId
     try {
-      const data = await playPost('solo/finish', { roundId, token: saved.token, outcome: 'won' })
+      const data = await playPost('solo/finish', { roundId, token: saved.token, outcome: 'won', actions: saved.actions })
       saved.game.rewards = data.rewards || []
       saved.game.rewardId = data.rewardId; saved.finishAck = roundId
       if (solo.value === saved) { operationError.value = ''; persist() }
-    } catch (error) { operationError.value = error instanceof Error ? error.message : '通关奖励未确认，点击重试' }
-    finally { rewardPending.value = false }
+    } catch (error) { if (solo.value === saved) operationError.value = error instanceof Error ? error.message : '通关奖励未确认，点击重试' }
+    finally { if (solo.value === saved) rewardPending.value = false }
   }
   function localAction(action: GameAction) {
     applyGameAction(solo.value.game, action, Date.now() + serverOffset.value); saveSoon(); scheduleResolve()
+    ;(solo.value.actions ||= []).push({ ...action })
     if (action.type === 'pick' || action.type === 'return') sound.playSlot()
     noteBlocked()
   }
@@ -165,6 +169,7 @@ export function useGame() {
     if (!solo.value.game.applied.includes(operationId)) {
       if (data.tools) candidate.tools = data.tools
       candidate.applied.push(operationId); solo.value.game = candidate
+      ;(solo.value.actions ||= []).push({ ...action, operationId })
     }
     solo.value.pending = undefined; persist(); sound.playPowerUp()
   }
@@ -274,7 +279,10 @@ export function useGame() {
       const g = saved.game
       if (g?.cards?.length && g.cards.every(c => Number.isSafeInteger(c.id) && typeof c.type === 'string' && ['board', 'slot', 'staged', 'cleared'].includes(c.status)) &&
         [g.slots, g.staged, g.eliminating, g.hinted, g.applied, g.defs].every(Array.isArray) && g.settings?.levels?.length &&
-        Number.isFinite(g.startedAt) && Number.isInteger(g.tools?.hint) && Number.isInteger(g.tools?.rescue) && g.profile && typeof g.roundId === 'string') { solo.value = saved; restored = true }
+        Number.isFinite(g.startedAt) && Number.isInteger(g.tools?.hint) && Number.isInteger(g.tools?.rescue) && g.profile && typeof g.roundId === 'string') {
+          if (!saved.practice && !Array.isArray(saved.actions)) { saved.practice = true; saved.token = ''; showSlotToast('旧版本牌局已转为本地练习，联网重开后可领取奖励') }
+          solo.value = saved; restored = true
+        }
     } catch { /* Start a fresh round if the local checkpoint is malformed. */ }
     await Promise.all([syncPageState(), !restored ? startSolo(1, true) : Promise.resolve()])
     if (destroyed) return

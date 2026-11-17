@@ -15,7 +15,7 @@ export async function backend() {
   const bridges = new Set<WebSocket>()
   const frames: any[] = []
   async function start() {
-    child = fork(path.resolve('server.js'), [], { env: { ...process.env, PORT: '0', DATA_DIR: directory, STORAGE_DRIVER: 'file' }, silent: true })
+    child = fork(path.resolve('server.js'), [], { env: { ...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password', PORT: '0', DATA_DIR: directory, STORAGE_DRIVER: 'file' }, silent: true })
     const [message] = await Promise.race([once(child, 'message'), new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('Backend timeout')), 10000); timer.unref() })])
     base = `http://127.0.0.1:${message.port}`
   }
@@ -35,7 +35,7 @@ export async function backend() {
   }
   return {
     directory, frames, credentials, get base() { return base }, post,
-    async login() { return (await (await post('/api/admin/login', { password: 'admin' })).json()).token as string },
+    async login() { return (await (await post('/api/admin/login', { password: 'test-admin-password' })).json()).token as string },
     async attach(page: Page, native = false, forwardFrame: (frame: any) => boolean = () => true) {
       const profile = credentials(randomUUID())
       await page.addInitScript(value => { if (!localStorage.getItem('gang_personal_profile_v1')) localStorage.setItem('gang_personal_profile_v1', JSON.stringify(value)) }, profile)

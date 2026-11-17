@@ -8,7 +8,7 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 
 const directory = await mkdtemp(path.join(tmpdir(), 'yang-production-'))
-const backend = fork(path.resolve('server.js'), [], { env: { ...process.env, PORT: '0', DATA_DIR: directory }, silent: true })
+const backend = fork(path.resolve('server.js'), [], { env: { ...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password', PORT: '0', DATA_DIR: directory }, silent: true })
 const root = path.resolve('android/app/src/main/assets/public')
 const web = createServer(async (req, res) => {
   try {
@@ -24,7 +24,7 @@ try {
   const [{ port }] = await Promise.race([once(backend, 'message'), new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Backend timeout')), 10000); timer.unref() })])
   const base = 'http://127.0.0.1:' + port
   const post = (url, body, token) => fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) })
-  const { token } = await (await post('/api/admin/login', { password: 'admin' })).json()
+  const { token } = await (await post('/api/admin/login', { password: 'test-admin-password' })).json()
   await post('/api/config', { gameSettings: { levels: [{ minCards: 6, maxCards: 6, types: 1 }] } }, token)
   await new Promise(resolve => web.listen(0, '127.0.0.1', resolve))
   assert(!(await readdir(path.join(root, 'assets'))).some(file => /Admin/.test(file)), 'Android bundle includes administrator code')
@@ -54,11 +54,12 @@ try {
   for (let pick = 2; pick < 6; pick++) {
     await expect(page.locator('.board-arena')).toHaveAttribute('aria-busy', 'false')
     await page.locator('.board-arena .is-clickable').first().click()
+    await page.waitForTimeout(200)
   }
   const ledger = async () => JSON.parse(await readFile(path.join(directory, 'coupon-ledger.json'), 'utf8'))
   await expect.poll(async () => (await ledger()).transactions.filter(row => row.event === 'coupon_gain' && row.details.roundId).length).toBe(1)
   const value = await ledger()
-  assert(value.transactions.filter(row => row.source !== 'server').every(row => row.source === 'android_app' && row.ip && row.device && row.version === '2.0.0'))
+  assert(value.transactions.filter(row => row.source !== 'server').every(row => row.source === 'android_app' && row.ip && row.device && row.version === '2.1.0'))
   assert.equal(value.transactions.filter(row => row.event === 'prop_use').length, 1)
   assert(!value.transactions.some(row => /click|card_pick|heartbeat/.test(row.event)))
   await expect(page.getByRole('button', { name: '进入下一关！', exact: true })).toBeEnabled()

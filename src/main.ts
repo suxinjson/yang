@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import './style.css'
+import './premium.css'
 import { Capacitor } from '@capacitor/core'
 
 const admin = import.meta.env.MODE !== 'android' && !Capacitor.isNativePlatform() && (/(^|\/)admin\/?$/.test(location.pathname) || new URLSearchParams(location.search).has('admin'))

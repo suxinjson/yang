@@ -83,12 +83,58 @@ export class InventoryService {
     return profile
   }
 
-  create(credentials) {
+  create(credentials, options = {}) {
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(credentials?.profileId) || !/^[a-f0-9]{64}$/.test(credentials?.profileSecret)) {
       throw Object.assign(new Error('个人身份格式无效'), { status: 400 })
     }
     if (this.value.profiles[credentials.profileId]) return this.authenticate(credentials)
     
+    const gender = options?.gender || 'neutral'
+    const isFemale = gender === 'female'
+    const isMale = gender === 'male'
+
+    const starterHair = isFemale ? 'wardrobe.hair.brown_wavy' : 'wardrobe.hair.black_short'
+    const starterTop = isFemale ? 'wardrobe.top.pink_hoodie' : (isMale ? 'wardrobe.top.couple_suit' : 'wardrobe.top.white_tshirt')
+    const starterBottom = isFemale ? 'wardrobe.bottom.plaid_skirt' : 'wardrobe.bottom.denim_jeans'
+    const starterShoes = isMale ? 'wardrobe.shoes.leather' : 'wardrobe.shoes.sneakers'
+
+    const starterFeatures = isFemale ? {
+      gender: 'female',
+      skin: '#ffd1dc',
+      hairColor: '#5d4037',
+      eyeColor: '#7b2cbf',
+      lipColor: '#e57373',
+      eyes: 'default',
+      brows: 'default',
+      lips: 'default'
+    } : (isMale ? {
+      gender: 'male',
+      skin: '#ffdbac',
+      hairColor: '#2b2320',
+      eyeColor: '#3a506b',
+      lipColor: '#c08081',
+      eyes: 'default',
+      brows: 'default',
+      lips: 'default'
+    } : {
+      gender: 'neutral',
+      skin: '#ffdbac',
+      hairColor: '#2b2320',
+      eyeColor: '#4e342e',
+      lipColor: '#e57373',
+      eyes: 'default',
+      brows: 'default',
+      lips: 'default'
+    })
+
+    const equippedSlots = {
+      hair: starterHair,
+      top: starterTop,
+      bottom: starterBottom,
+      shoes: starterShoes,
+      accessory: null
+    }
+
     const profile = {
       id: credentials.profileId,
       secretHash: crypto.createHash('sha256').update(credentials.profileSecret).digest('hex'),
@@ -97,7 +143,7 @@ export class InventoryService {
       goldCoins: 100,
       heartCoins: 10,
       items: {},
-      equippedSlots: { hair: 'wardrobe.hair.black_short', top: 'wardrobe.top.white_tshirt', bottom: 'wardrobe.bottom.denim_jeans', shoes: 'wardrobe.shoes.sneakers', accessory: null }
+      equippedSlots
     }
     this.value.profiles[profile.id] = profile
 
@@ -105,15 +151,29 @@ export class InventoryService {
     this.grant(profile.id, 'gang.hint', 2)
     this.grant(profile.id, 'gang.rescue', 1)
     this.grant(profile.id, 'pet.supply.canned_food', 2)
-    this.grant(profile.id, 'wardrobe.hair.black_short', 1, { slot: 'hair', isEquipped: true })
-    this.grant(profile.id, 'wardrobe.top.white_tshirt', 1, { slot: 'top', isEquipped: true })
-    this.grant(profile.id, 'wardrobe.bottom.denim_jeans', 1, { slot: 'bottom', isEquipped: true })
-    this.grant(profile.id, 'wardrobe.shoes.sneakers', 1, { slot: 'shoes', isEquipped: true })
+    this.grant(profile.id, starterHair, 1, { slot: 'hair', isEquipped: true })
+    this.grant(profile.id, starterTop, 1, { slot: 'top', isEquipped: true })
+    this.grant(profile.id, starterBottom, 1, { slot: 'bottom', isEquipped: true })
+    this.grant(profile.id, starterShoes, 1, { slot: 'shoes', isEquipped: true })
+
+    // Provide wardrobe basics for flexible switching
+    if (starterHair !== 'wardrobe.hair.black_short') {
+      this.grant(profile.id, 'wardrobe.hair.black_short', 1, { slot: 'hair', isEquipped: false })
+    }
+    if (starterTop !== 'wardrobe.top.white_tshirt') {
+      this.grant(profile.id, 'wardrobe.top.white_tshirt', 1, { slot: 'top', isEquipped: false })
+    }
+    if (starterBottom !== 'wardrobe.bottom.denim_jeans') {
+      this.grant(profile.id, 'wardrobe.bottom.denim_jeans', 1, { slot: 'bottom', isEquipped: false })
+    }
+    if (starterShoes !== 'wardrobe.shoes.sneakers') {
+      this.grant(profile.id, 'wardrobe.shoes.sneakers', 1, { slot: 'shoes', isEquipped: false })
+    }
 
     // Initialize default avatar
     this.value.avatars[profile.id] = {
-      features: { gender: 'neutral', skin: '#ffdbac', eyes: 'default', brows: 'default', lips: 'default' },
-      equippedSlots: { hair: 'wardrobe.hair.black_short', top: 'wardrobe.top.white_tshirt', bottom: 'wardrobe.bottom.denim_jeans', shoes: 'wardrobe.shoes.sneakers', accessory: null }
+      features: starterFeatures,
+      equippedSlots
     }
 
     // Initialize default home space
@@ -130,6 +190,11 @@ export class InventoryService {
         { instanceId: 'init_frame', catalogId: 'furniture.frame.couple', x: 4, y: 1, rot: 0, layer: 'wall' }
       ]
     }
+
+    for (const furniture of this.value.homeSpaces[profile.id].placedFurnitures) {
+      this.grant(profile.id, furniture.catalogId, 1)
+    }
+    profile.starterFurnitureGranted = true
 
     // Initialize default companion & pet
     this.value.companions[profile.id] = {
@@ -163,6 +228,33 @@ export class InventoryService {
 
     profile.items[itemId] = domainItem.serialize()
     profile.revision++
+  }
+
+  migrateLegacyState() {
+    const starter = ['furniture.sofa.modern', 'furniture.rug.love', 'furniture.tv.retro', 'furniture.mirror.dresser', 'furniture.desk.work', 'furniture.pet.bed', 'furniture.frame.couple']
+    let changed = false
+    for (const profile of Object.values(this.value.profiles)) if (!profile.starterFurnitureGranted) {
+      for (const id of starter) if (!(profile.items[id]?.quantity > 0)) this.grant(profile.id, id, 1)
+      profile.starterFurnitureGranted = true
+      profile.revision++
+      changed = true
+    }
+    for (const profile of Object.values(this.value.profiles)) {
+      const companion = this.value.companions[profile.id]
+      if (companion?.petStatus === 'foraging' && !Number.isFinite(Date.parse(companion.petForageEndAt))) {
+        // Old writers lost this field. Resume a full trip instead of granting early.
+        companion.petForageEndAt = new Date(Date.now() + 3600000).toISOString()
+        profile.revision++
+        changed = true
+      }
+      const job = this.value.idleJobs[profile.id]
+      if (job && this.value.transactions.some(row => row.event === 'idle_job_claim' && row.profileId === profile.id && row.details?.jobId === job.jobId && Date.parse(row.at) >= Date.parse(job.startedAt))) {
+        delete this.value.idleJobs[profile.id]
+        profile.revision++
+        changed = true
+      }
+    }
+    return changed
   }
 
   spend(profileId, itemId, count = 1) {
@@ -201,11 +293,53 @@ export class InventoryService {
     profile.revision++
   }
 
+  saveAvatarAll(profileId, payload = {}) {
+    const profile = this.value.profiles[profileId]
+    if (!profile) throw Object.assign(new Error('用户档案不存在'), { status: 404 })
+
+    const slots = payload.equippedSlots
+    if (slots !== undefined) {
+      if (!slots || typeof slots !== 'object' || Array.isArray(slots)) throw Object.assign(new Error('装备格式无效'), { status: 400 })
+      for (const [slot, itemId] of Object.entries(slots)) this.validateEquipment(profileId, itemId, slot)
+    }
+    this.value.avatars[profileId] ||= { features: {}, equippedSlots: {} }
+    profile.equippedSlots ||= {}
+
+    // 1. Update features
+    if (payload.features && typeof payload.features === 'object') {
+      this.value.avatars[profileId].features = {
+        ...this.value.avatars[profileId].features,
+        ...payload.features
+      }
+    }
+
+    // 2. Update equippedSlots
+    if (payload.equippedSlots && typeof payload.equippedSlots === 'object') {
+      const nextSlots = { ...this.value.avatars[profileId].equippedSlots }
+      for (const [slot, itemId] of Object.entries(payload.equippedSlots)) {
+        const previous = nextSlots[slot]
+        if (previous && profile.items[previous]) profile.items[previous].isEquipped = false
+        if (!itemId) {
+          nextSlots[slot] = null
+          delete profile.equippedSlots[slot]
+          continue
+        }
+        profile.items[itemId].isEquipped = true
+        profile.equippedSlots[slot] = itemId
+        nextSlots[slot] = itemId
+      }
+      this.value.avatars[profileId].equippedSlots = nextSlots
+    }
+
+    profile.revision++
+    return this.value.avatars[profileId]
+  }
+
   equip(profileId, itemId, slot) {
     const profile = this.value.profiles[profileId]
     if (!profile) throw Object.assign(new Error('用户档案不存在'), { status: 404 })
+    this.validateEquipment(profileId, itemId, slot)
     const entry = profile.items[itemId]
-    if (!entry || entry.quantity < 1) throw Object.assign(new Error('尚未拥有该服饰'), { status: 403 })
     
     profile.equippedSlots ||= {}
     this.value.avatars[profileId] ||= { features: {}, equippedSlots: {} }
@@ -219,6 +353,14 @@ export class InventoryService {
     this.value.avatars[profileId].equippedSlots[slot] = itemId
     profile.revision++
     return this.value.avatars[profileId]
+  }
+
+  validateEquipment(profileId, itemId, slot) {
+    if (!['hair', 'top', 'bottom', 'shoes', 'accessory'].includes(slot)) throw Object.assign(new Error('装备槽位无效'), { status: 400 })
+    if (itemId === null) return
+    const definition = typeof itemId === 'string' && Object.hasOwn(ITEM_REGISTRY, itemId) ? ITEM_REGISTRY[itemId] : null
+    if (!definition || definition.category !== 'wardrobe' || definition.slot !== slot) throw Object.assign(new Error('服饰与槽位不匹配'), { status: 400 })
+    if (!(this.value.profiles[profileId]?.items[itemId]?.quantity > 0)) throw Object.assign(new Error('尚未拥有该服饰'), { status: 403 })
   }
 
   tools(profileId) {

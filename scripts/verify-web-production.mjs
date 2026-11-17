@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 
 assert((await readdir('dist/assets')).some(file => /^AdminApp-.*\.js$/.test(file)), 'Run npm run build before verifying the Web release')
 const directory = await mkdtemp(path.join(tmpdir(), 'yang-web-production-'))
-const backend = fork(path.resolve('server.js'), [], { env: { ...process.env, PORT: '0', DATA_DIR: directory }, silent: true })
+const backend = fork(path.resolve('server.js'), [], { env: { ...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password', PORT: '0', DATA_DIR: directory }, silent: true })
 let browser, proxy
 try {
   const [{ port }] = await Promise.race([once(backend, 'message'), new Promise((_, reject) => {
@@ -31,7 +31,7 @@ try {
     page.on('request', req => requests.push(req.url()))
     page.on('pageerror', error => errors.push(error.message))
     await page.goto(base + entry)
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
     await page.getByRole('button', { name: /登录后台/ }).click()
     await expect(page.getByTestId('game-settings')).toBeVisible()
     await page.getByRole('button', { name: '保存全部配置', exact: true }).click()

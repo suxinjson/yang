@@ -11,4 +11,4 @@ export function getInstallationId() {
   if (!id || !/^[a-zA-Z0-9_-]{8,80}$/.test(id) || Object.hasOwn(Object.prototype, id) || id === '__proto__') { id = crypto.randomUUID(); localStorage.setItem('ganglegang_installation_id', id) }
   return id
 }
-export function clientIdentity() { return { deviceId: getInstallationId(), sessionId: launchSessionId, platform: Capacitor.getPlatform(), version: '2.0.0' } }
+export function clientIdentity() { return { deviceId: getInstallationId(), sessionId: launchSessionId, platform: Capacitor.getPlatform(), version: '2.1.0' } }

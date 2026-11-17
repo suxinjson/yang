@@ -1,8 +1,8 @@
-# Android App 2.0.0
+# Android App 2.1.0
 
-以下描述当前源码。已发布 APK 未重新构建；本轮新增背包、分组和生命周期功能在下次构建后生效。PostgreSQL 接入及备份迁移见 [POSTGRES_SETUP.md](POSTGRES_SETUP.md)。
+以下描述当前源码。本轮深度重写了模拟人生式温馨小家、高质感二次元纸娃娃捏脸系统、2.5D Isometric 纯矢量家具渲染、打工/宠物/伴侣羁绊生态，以及 12 阶消除关卡与通用多态背包。PostgreSQL 接入及备份迁移见 [POSTGRES_SETUP.md](POSTGRES_SETUP.md)。
 
-包名 com.love.ganglegang，版本号 5，支持 Android 7.0 以上及现代 Android System WebView。后台地址由 .env.android 固定，升级沿用原签名。App 只包含游戏，开发者使用浏览器访问 /admin（子目录部署为 /gang/admin）。
+包名 com.love.ganglegang，版本号 6，版本名 2.1.0，支持 Android 7.0 以上及现代 Android System WebView。后台地址由 .env.android 固定，升级沿用原签名。App 只包含游戏，开发者使用浏览器访问 /admin（子目录部署为 /gang/admin）。
 
 ## 单人模式
 

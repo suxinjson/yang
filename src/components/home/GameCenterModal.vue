@@ -31,7 +31,7 @@
 
           <div class="game-features-list mt-3">
             <span class="feat-chip">💎 局内道具与通用背包实时联动</span>
-            <span class="feat-chip">💖 通关掉落心愿券与服饰</span>
+            <span class="feat-chip"><DesignIcon name="heart" /> 通关掉落心愿券与服饰</span>
             <span class="feat-chip">👥 支持双人情侣房间联机同玩</span>
           </div>
 
@@ -62,6 +62,7 @@
 </template>
 
 <script setup lang="ts">
+import DesignIcon from '../DesignIcon.vue'
 defineEmits(['close', 'start-gang'])
 </script>
 

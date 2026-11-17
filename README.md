@@ -11,7 +11,7 @@ Vue 3 / Vite 叠叠三消游戏，包含 Capacitor Android App、单人闯关、
 
 ## 本地开发
 
-运行 npm ci 安装依赖，npm start 启动 API；另开终端运行 npm run dev。API 默认端口 3000，Vite 转发 /api 和 /photos。首次后台密码为 admin，可在“密码安全”中修改。本地默认 JSON 开发适配器；生产使用已有 PostgreSQL 17 独立库、专用账号和最多 5 个连接，接入与迁移前备份见 [POSTGRES_SETUP.md](POSTGRES_SETUP.md)。配置和上传照片仍存放在 data/，应一并备份。
+运行 npm ci 安装依赖，npm start 启动 API；另开终端运行 npm run dev。API 默认端口 3000，Vite 转发 /api 和 /photos。首次启动前用环境变量 ADMIN_INITIAL_PASSWORD 设置至少 12 位的后台密码，未配置时禁止管理员登录；已有后台密码不受影响，可在“密码安全”中修改。本地默认 JSON 开发适配器；生产使用已有 PostgreSQL 17 独立库、专用账号和最多 5 个连接，接入与迁移前备份见 [POSTGRES_SETUP.md](POSTGRES_SETUP.md)。配置和上传照片仍存放在 data/，应一并备份。
 
 ## 关卡和照片
 

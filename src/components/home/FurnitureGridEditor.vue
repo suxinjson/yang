@@ -3,7 +3,7 @@
     <!-- Top Bar Controls -->
     <div class="editor-header">
       <div class="flex items-center gap-2">
-        <span class="text-lg">🛠️</span>
+        <span class="text-lg"><DesignIcon name="tools" /></span>
         <span class="font-bold text-stone-800 text-sm">小家网格装修模式 (10×10)</span>
       </div>
       <div class="flex items-center gap-2">
@@ -49,7 +49,7 @@
           :style="getFurnitureStyle(furn)"
           @click.stop="selectFurniture(furn)"
         >
-          <div class="furn-icon">{{ getFurnDef(furn.catalogId)?.icon || '🛋️' }}</div>
+          <div class="furn-icon"><ModelPreview :catalog-id="furn.catalogId" :width="84" :height="74" /></div>
           <div class="furn-label">{{ getFurnDef(furn.catalogId)?.name || furn.catalogId }}</div>
         </div>
       </div>
@@ -65,7 +65,7 @@
           class="drawer-card"
           @click="addFurnitureToGrid(item)"
         >
-          <span class="d-icon">{{ item.metadata?.icon || '🛋️' }}</span>
+          <span class="d-icon"><ModelPreview :catalog-id="item.catalogId" :width="66" :height="60" /></span>
           <span class="d-name">{{ item.metadata?.name || item.catalogId }}</span>
           <span class="d-count">×{{ item.quantity }}</span>
         </div>
@@ -78,6 +78,8 @@
 </template>
 
 <script setup lang="ts">
+import DesignIcon from '../DesignIcon.vue'
+import ModelPreview from './ModelPreview.vue'
 import { ref, computed } from 'vue'
 import { platformOverview, saveHomeSpace, type PlacedFurniture } from '../../utils/platformState'
 import { ITEM_REGISTRY } from '../../../shared/domain/items/index'
@@ -95,7 +97,7 @@ const furnitures = ref<PlacedFurniture[]>([
 
 const availableFurnitureItems = computed(() => {
   const items = platformOverview.value?.items || []
-  return items.filter(item => item.category === 'furniture')
+  return items.filter(item => item.category === 'furniture' && furnitures.value.filter(f => f.catalogId === item.catalogId).length < item.quantity)
 })
 
 function getFurnDef(catalogId: string) {
@@ -134,10 +136,10 @@ function getFurnitureStyle(furn: PlacedFurniture) {
 function checkSingleConflict(furn: PlacedFurniture): boolean {
   const { w, h } = getFurnitureDimensions(furn)
   if (furn.x < 0 || furn.y < 0 || furn.x + w > 10 || furn.y + h > 10) return true
-  if (furn.layer === 'rug') return false
+  if (furn.layer !== 'ground') return false
 
   for (const other of furnitures.value) {
-    if (other.instanceId === furn.instanceId || other.layer === 'rug') continue
+    if (other.instanceId === furn.instanceId || other.layer !== 'ground') continue
     const { w: oW, h: oH } = getFurnitureDimensions(other)
     const overlapX = Math.max(furn.x, other.x) < Math.min(furn.x + w, other.x + oW)
     const overlapY = Math.max(furn.y, other.y) < Math.min(furn.y + h, other.y + oH)
@@ -163,7 +165,7 @@ function handleCellClick(x: number, y: number) {
 }
 
 function rotateSelected() {
-  if (!selectedItem.value) return
+  if (!selectedItem.value || !selectedDef.value?.rotatable) return
   selectedItem.value.rot = ((selectedItem.value.rot || 0) + 90) % 360
   const { w, h } = getFurnitureDimensions(selectedItem.value)
   if (selectedItem.value.x + w > 10) selectedItem.value.x = 10 - w

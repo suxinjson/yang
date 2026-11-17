@@ -4,11 +4,12 @@
     <div class="dialog-actions">
       <button v-if="canRescue" class="game-button" @click="$emit('summon')">救场暂存</button>
       <button class="game-button" :class="{ secondary: canRescue }" @click="$emit('restart')">重新开始本关</button>
+      <button class="game-button secondary" @click="$emit('return-home')">🏡 返回主页面</button>
     </div>
   </GameDialog>
 </template>
 <script setup lang="ts">
 import GameDialog from './GameDialog.vue'
 defineProps<{ capacity: number; canRescue: boolean; unmatchable?: boolean }>()
-defineEmits<{ (e: 'summon'): void; (e: 'restart'): void }>()
+defineEmits<{ (e: 'summon'): void; (e: 'restart'): void; (e: 'return-home'): void }>()
 </script>

@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="panel-header">
         <div class="flex items-center gap-2">
-          <span class="text-xl">💻</span>
+          <span class="text-xl"><DesignIcon name="work" /></span>
           <div>
             <h2 class="text-base font-bold text-stone-800 leading-tight">打工与日程中心</h2>
             <p class="text-xs text-stone-500">下线挂机持续产生收益，离线归来收获大量金币与图纸！</p>
@@ -21,7 +21,7 @@
               <span class="text-2xl">{{ currentJobDef?.icon || '⏱️' }}</span>
               <div>
                 <div class="font-bold text-stone-800 text-sm">{{ currentJobDef?.title || '进行中的日程' }}</div>
-                <div class="text-xs text-stone-500">固定收益：🪙 {{ activeJob.rewardCoins }} 金币</div>
+                <div class="text-xs text-stone-500">固定收益：<DesignIcon name="coin" /> {{ activeJob.rewardCoins }} 金币</div>
               </div>
             </div>
             <span class="status-pill" :class="{ ready: isComplete }">
@@ -56,7 +56,7 @@
               :disabled="loading"
               @click="handleClaim"
             >
-              🎉 领取 🪙 {{ activeJob.rewardCoins }} 金币与奖励
+              🎉 领取 <DesignIcon name="coin" /> {{ activeJob.rewardCoins }} 金币与奖励
             </button>
           </div>
         </div>
@@ -80,8 +80,8 @@
                   </div>
                   <p class="text-xs text-stone-500 mt-0.5">{{ job.desc }}</p>
                   <div class="rewards-row mt-1">
-                    <span class="reward-pill gold">🪙 +{{ job.rewardCoins }} 金币</span>
-                    <span class="reward-pill surprise">🎁 概率掉落图纸/补给</span>
+                    <span class="reward-pill gold"><DesignIcon name="coin" /> +{{ job.rewardCoins }} 金币</span>
+                    <span class="reward-pill surprise"><DesignIcon name="gift" /> 概率掉落图纸/补给</span>
                   </div>
                 </div>
               </div>
@@ -101,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+import DesignIcon from '../DesignIcon.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   platformOverview,
@@ -108,7 +109,7 @@ import {
   claimIdleJob,
   buyStoreItem
 } from '../../utils/platformState'
-import { JOBS_CONFIG, type JobDefinition } from '../../../shared/platformServer'
+import { JOBS_CONFIG, type JobDefinition } from '../../../shared/jobsConfig'
 
 const emit = defineEmits(['close'])
 

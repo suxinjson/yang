@@ -8,7 +8,7 @@ test('admin creates an ordinary photo group, selects it per level, and uses rank
   const config=()=>JSON.parse(fs.readFileSync(path.join(server.directory,'config.json'),'utf8'))
   try{
     await server.attach(page);await page.setViewportSize({width:390,height:900});await page.goto('/admin')
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin');await page.getByRole('button',{name:'登录后台',exact:true}).click()
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password');await page.getByRole('button',{name:'登录后台',exact:true}).click()
     await page.getByRole('button',{name:'卡牌种类与图片',exact:true}).click()
     await page.getByLabel('新分组名称').fill('情侣合照');await page.getByRole('button',{name:'添加分组',exact:true}).click()
     await expect.poll(()=>config().cardGroups.some((group:any)=>group.name==='情侣合照')).toBe(true)
@@ -43,7 +43,7 @@ test('one-of reward settings reject invalid totals and show a persistent persona
     const admin=await server.login()
     await server.post('/api/config',{gameSettings:{levels:[{minCards:6,maxCards:6,types:1}]}},admin)
     await server.attach(page);await page.setViewportSize({width:390,height:844});await page.goto('/admin')
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin');await page.getByRole('button',{name:'登录后台',exact:true}).click()
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password');await page.getByRole('button',{name:'登录后台',exact:true}).click()
     await page.getByRole('button',{name:'心愿券设置',exact:true}).click()
     await page.getByLabel('共同获取道具').uncheck()
     await page.getByLabel('透视卡获得概率',{exact:true}).fill('80');await page.getByLabel('召唤男友卡获得概率',{exact:true}).fill('80')

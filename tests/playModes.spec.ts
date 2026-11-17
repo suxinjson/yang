@@ -165,7 +165,7 @@ test('developer dashboard is separate from the App, saves in place and manages t
     await expect(app.getByText('后台管理身份验证')).toHaveCount(0)
     await page.setViewportSize({ width: 1440, height: 1000 }); await page.goto('/admin')
     await expect(page.locator('.board-arena')).toHaveCount(0)
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
     await page.getByRole('button', { name: /登录后台/ }).click()
     await page.getByLabel('棋盘宽度', { exact: true }).fill('380')
     await page.getByRole('button', { name: '保存全部配置' }).click()

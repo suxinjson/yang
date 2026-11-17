@@ -4,12 +4,12 @@
       <!-- Header -->
       <div class="panel-header">
         <div class="flex items-center gap-2">
-          <span class="text-xl">🎒</span>
+          <span class="text-xl"><DesignIcon name="bag" /></span>
           <div>
             <h2 class="text-base font-bold text-stone-800 leading-tight">通用多态背包</h2>
             <div class="flex items-center gap-3 text-xs font-semibold mt-0.5">
-              <span class="text-amber-700">🪙 金币: {{ coins.gold }}</span>
-              <span class="text-rose-700">💖 爱心币: {{ coins.heart }}</span>
+              <span class="text-amber-700"><DesignIcon name="coin" /> 金币: {{ coins.gold }}</span>
+              <span class="text-rose-700"><DesignIcon name="heart" /> 爱心币: {{ coins.heart }}</span>
             </div>
           </div>
         </div>
@@ -25,7 +25,7 @@
           :class="{ active: activeCategory === cat.key }"
           @click="activeCategory = cat.key"
         >
-          <span>{{ cat.icon }}</span>
+          <span><DesignIcon :name="cat.key === 'furniture' ? 'sofa' : cat.key === 'wardrobe' ? 'shirt' : cat.key === 'wish_coupon' ? 'heart' : 'bag'" /></span>
           <span>{{ cat.label }}</span>
         </button>
       </div>
@@ -61,7 +61,7 @@
             :class="{ selected: selectedItem?.id === item.id }"
             @click="selectedItem = item"
           >
-            <div class="item-icon-wrap">{{ item.icon || item.metadata?.icon || '📦' }}</div>
+            <div class="item-icon-wrap"><ModelPreview :catalog-id="item.catalogId" :width="76" :height="76" /></div>
             <div class="item-name">{{ item.name || item.title || item.metadata?.name || item.catalogId }}</div>
             <div class="item-quantity">×{{ item.quantity || 1 }}</div>
             <div v-if="item.isEquipped" class="equipped-badge">穿戴中</div>
@@ -76,7 +76,7 @@
         <!-- Selected Item Detail Action Drawer (if an item is clicked) -->
         <div v-if="selectedItem" class="item-detail-drawer">
           <div class="flex items-center gap-3">
-            <span class="text-3xl">{{ selectedItem.icon || selectedItem.metadata?.icon || '📦' }}</span>
+            <span class="text-3xl"><ModelPreview :catalog-id="selectedItem.catalogId" :width="60" :height="60" /></span>
             <div class="flex-1">
               <div class="flex items-center gap-2">
                 <span class="font-bold text-stone-800 text-sm">
@@ -97,7 +97,7 @@
               class="btn-action redeem"
               @click="handleRedeemCoupon(selectedItem)"
             >
-              💖 兑现情侣心愿
+              <DesignIcon name="heart" /> 兑现情侣心愿
             </button>
 
             <!-- Wardrobe Action -->
@@ -106,7 +106,7 @@
               class="btn-action equip"
               @click="$emit('open-wardrobe')"
             >
-              🪞 前往衣帽间试穿
+              <DesignIcon name="mirror" /> 前往衣帽间试穿
             </button>
 
             <!-- Furniture Action -->
@@ -115,7 +115,7 @@
               class="btn-action place"
               @click="$emit('open-furniture-grid')"
             >
-              🛋️ 摆放进温馨小家
+              <DesignIcon name="sofa" /> 摆放进温馨小家
             </button>
           </div>
         </div>
@@ -125,6 +125,8 @@
 </template>
 
 <script setup lang="ts">
+import DesignIcon from '../DesignIcon.vue'
+import ModelPreview from './ModelPreview.vue'
 import { ref, computed } from 'vue'
 import { platformOverview } from '../../utils/platformState'
 

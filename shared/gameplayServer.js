@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { createGame, applyGameAction, settleGame } from './gameEngine.js'
 import { logMatches } from './logRules.js'
 import { InventoryService, drawToolRewards, normalizeRewardPolicy } from './inventory.js'
+import { verifySoloWin } from './soloProof.js'
 
 const ID = /^[a-zA-Z0-9_-]{8,100}$/
 const validId = value => typeof value === 'string' && ID.test(value) && !Object.hasOwn(Object.prototype, value) && value !== '__proto__'
@@ -108,6 +109,13 @@ export function registerGameplay(app, services) {
   function completionRewards(value, game, actor) {
     const key = 'completion_' + game.roundId + '_' + actor.profileId
     if (value.operations[key]) return value.operations[key].reward
+    const user = Object.values(value.users || {}).find(user => user.profileId === actor.profileId)
+    value.gameRecords ||= []
+    value.gameRecords.push({ id: key, roundId: game.roundId, profileId: actor.profileId,
+      username: user?.username || '', nickname: user?.nickname || '游客', gender: user?.gender || 'neutral',
+      level: game.level, cleared: true, verified: true, durationSeconds: Math.max(1, Math.round((Date.now() - game.startedAt) / 1000)),
+      movesCount: game.verifiedMoves || game.cards.length, at: new Date().toISOString() })
+    value.gameRecords = value.gameRecords.slice(-2000)
     const policy = normalizeRewardPolicy(getConfig().rewardPolicy), inventory = new InventoryService(value)
     const items = drawToolRewards(policy)
     for (const item of items) inventory.grant(actor.profileId, item.itemId, item.quantity)
@@ -180,6 +188,7 @@ export function registerGameplay(app, services) {
     if (!['won', 'lost', 'abandoned'].includes(outcome)) throw fail('结果参数无效')
     if (!round.finished) {
       if (outcome === 'won' && round.game.cards.length % 3) throw fail('本关卡片数量不是 3 的倍数，无法完成严格三消，请调整关卡配置')
+      if (outcome === 'won') round.game.verifiedMoves = verifySoloWin(round, req.body.actions).movesCount
       round.finished = outcome
       if (outcome === 'won') { round.reward = completionRewards(value, { ...round.game, mode: 'solo' }, round.actor); round.game.rewardId = round.reward.couponId }
       journal(value, 'round_end', round.actor, { roundId: round.game.roundId, level: round.game.level, mode: 'solo', outcome, elapsedMs: Date.now() - round.game.startedAt })
@@ -512,11 +521,16 @@ export function registerGameplay(app, services) {
         if (Date.now() - windowAt > 1000) { windowAt = Date.now(); count = 0 }
         if (++count > 30) throw fail('操作过快，请稍候')
         const message = JSON.parse(raw.toString())
+        if (authenticated) {
+          try { new InventoryService(ledger()).authenticate(socket.profileCredentials) }
+          catch (error) { if (error.status !== 403) throw error; send(socket, { type: 'ended', error: '账号会话已失效，请重新登录' }); socket.close(1008, 'Session revoked'); return }
+        }
         if (!authenticated) {
           const room = authRoom(message.roomId, message.token)
           const profile = new InventoryService(ledger()).authenticate(message)
           if (room.members.find(member => member.token === message.token).actor.profileId !== profile.id) throw fail('房间身份不匹配', 403)
           socket.roomId = room.id; socket.memberToken = message.token
+          socket.profileCredentials = { profileId: message.profileId, profileSecret: message.profileSecret }
           // A refreshed page replaces only its own old connection.
           for (const peer of sockets) if (peer.roomId === room.id && peer.memberToken === message.token) {
             peer.superseded = true; send(peer, { type: 'replaced', error: '同一身份已在另一页面连接；点击重新连接可接管' }); peer.close(1000, 'Replaced')

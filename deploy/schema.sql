@@ -52,6 +52,20 @@ CREATE INDEX IF NOT EXISTS idx_inventory_category ON player_inventory(profile_id
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_stackable ON player_inventory(profile_id, catalog_id) 
   WHERE (category IN ('currency', 'game_tool', 'pet_supply', 'work_token'));
 
+-- Restore the normalized projection from canonical inventory, without summing
+-- duplicate wardrobe rows created by older writers.
+DELETE FROM player_inventory projected WHERE EXISTS (
+  SELECT 1 FROM inventory canonical WHERE canonical.profile_id=projected.profile_id AND canonical.item_id=projected.catalog_id
+);
+INSERT INTO player_inventory(profile_id,category,catalog_id,quantity,is_equipped,metadata)
+SELECT i.profile_id, COALESCE(i.payload->>'category','game_tool'), i.item_id, i.quantity,
+  COALESCE((i.payload->>'isEquipped')::boolean,false), COALESCE(i.payload->'metadata','{}'::jsonb)
+FROM inventory i JOIN player_profiles p ON p.profile_id=i.profile_id;
+DELETE FROM player_inventory WHERE id IN (
+  SELECT id FROM (SELECT id, row_number() OVER (PARTITION BY profile_id,catalog_id ORDER BY updated_at DESC,id) AS rank FROM player_inventory) duplicates WHERE rank>1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_catalog ON player_inventory(profile_id,catalog_id);
+
 CREATE TABLE IF NOT EXISTS player_avatars (
   profile_id UUID PRIMARY KEY REFERENCES player_profiles(profile_id) ON DELETE CASCADE,
   features JSONB NOT NULL DEFAULT '{"gender":"neutral","skin":"#ffdbac","eyes":"default","brows":"default","lips":"default"}'::jsonb,
@@ -78,6 +92,7 @@ CREATE TABLE IF NOT EXISTS idle_jobs (
   reward_coins INT NOT NULL,
   claimed BOOLEAN NOT NULL DEFAULT FALSE
 );
+ALTER TABLE idle_jobs ADD COLUMN IF NOT EXISTS instance_id uuid;
 
 CREATE TABLE IF NOT EXISTS companion_states (
   profile_id UUID PRIMARY KEY REFERENCES player_profiles(profile_id) ON DELETE CASCADE,
@@ -105,4 +120,5 @@ CREATE TABLE IF NOT EXISTS asset_audit_ledger (
 
 INSERT INTO app_schema_version(version) VALUES(1) ON CONFLICT DO NOTHING;
 INSERT INTO app_schema_version(version) VALUES(2) ON CONFLICT DO NOTHING;
+INSERT INTO app_schema_version(version) VALUES(3) ON CONFLICT DO NOTHING;
 COMMIT;

@@ -1,4 +1,5 @@
 <template>
+  <AppUpdatePrompt />
   <HomeHub
     v-if="currentView === 'home'"
     @start-game="currentView = 'game'"
@@ -8,7 +9,10 @@
     <header class="game-header">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
-          <button class="icon-button" title="返回温馨小家" aria-label="返回温馨小家" @click="currentView = 'home'">🏡</button>
+          <button class="return-home-btn" title="返回温馨小家" aria-label="返回温馨小家" @click="currentView = 'home'">
+            <span class="home-icon">🏠</span>
+            <span class="btn-text">返回主页</span>
+          </button>
           <h1 class="game-title">钢了钢<span aria-hidden="true">✦</span></h1>
         </div>
         <div class="flex items-center gap-2">
@@ -52,7 +56,7 @@
     <WinModal v-if="showWinModal" :level="currentLevel" :reward-coupon="latestWonCoupon" :rewards="latestWonItems" :reward-unconfirmed="rewardUnconfirmed" :reward-pending="rewardPending"
       :reward-error="rewardUnconfirmed ? operationError : ''" :has-next-level="currentLevel < totalLevelsCount" :coupon-name="couponDisplayName"
       @retry-reward="retryPending" @next-level="handleNextLevel" @replay-egg="restartCurrentLevel" @open-coupons="openCoupons" @return-home="currentView = 'home'" />
-    <FailModal v-if="showFailModal" :capacity="unlockedSlots" :can-rescue="canRescue" :unmatchable="!activeBoardCards.length && !stagedCards.length && slotCards.length < unlockedSlots" @summon="handleSummonBoyfriend" @restart="restartCurrentLevel" />
+    <FailModal v-if="showFailModal" :capacity="unlockedSlots" :can-rescue="canRescue" :unmatchable="!activeBoardCards.length && !stagedCards.length && slotCards.length < unlockedSlots" @summon="handleSummonBoyfriend" @restart="restartCurrentLevel" @return-home="currentView = 'home'" />
     <CouponsModal v-if="showCouponsModal" :coupons="loveCoupons" :items="backpackItems" :coupon-name="couponDisplayName" :active-tab="game.couponTab" :error="operationError" :busy="actionBusy"
       @retry="retryPending" @filter="filterCoupons" @close="closeCoupons" @redeem="handleRedeemCoupon" />
   </div>
@@ -60,6 +64,9 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import AppUpdatePrompt from './components/AppUpdatePrompt.vue'
+import { startAppUpdates } from './utils/appUpdate'
+startAppUpdates()
 import { useGame } from './utils/useGame'
 import HomeHub from './components/home/HomeHub.vue'
 import CardComponent from './components/Card.vue'
@@ -71,6 +78,8 @@ import FailModal from './components/FailModal.vue'
 import CouponsModal from './components/CouponsModal.vue'
 import ModePanel from './components/ModePanel.vue'
 
+const isHeadless = typeof navigator !== 'undefined' && /Headless|Playwright/i.test(navigator.userAgent)
+
 function getInitialView(): 'home' | 'game' {
   if (typeof window === 'undefined') return 'home'
   const params = new URLSearchParams(window.location.search)
@@ -79,7 +88,6 @@ function getInitialView(): 'home' | 'game' {
   if (viewParam === 'game') return 'game'
   if (window.location.hash === '#game') return 'game'
   if (window.location.hash === '#home') return 'home'
-  const isHeadless = typeof navigator !== 'undefined' && /Headless|Playwright/i.test(navigator.userAgent)
   return isHeadless ? 'game' : 'home'
 }
 const currentView = ref<'home' | 'game'>(getInitialView())
@@ -114,6 +122,32 @@ defineExpose({
 <style scoped>
 .game-wrapper { width: 100%; max-width: 440px; min-height: 100svh; margin: auto; padding: max(18px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); display: flex; flex-direction: column; background: linear-gradient(180deg, #fff9f5, #f7edf0); user-select: none; }
 .game-header { width: 100%; padding: 0 4px; }
+.return-home-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1.5px solid #fed7aa;
+  border-radius: 11px;
+  color: #c2410c;
+  background: #fff7ed;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(194, 65, 12, 0.08);
+  transition: all 0.15s ease-out;
+}
+.return-home-btn:hover {
+  background: #ffedd5;
+  transform: translateY(-1px);
+}
+.return-home-btn:active {
+  transform: scale(0.96);
+}
+.home-icon {
+  font-size: 14px;
+}
 .game-title { display: flex; gap: 8px; align-items: center; margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.04em; color: #68414d; }
 .game-title span { color: #b18474; font-size: 18px; }
 .icon-button { display: grid; place-items: center; width: 34px; height: 34px; font-size: 15px; border: 1px solid #eddee0; border-radius: 11px; color: #835263; background: #fffcfa; cursor: pointer; }

@@ -34,7 +34,9 @@ export interface ProfileSnapshot {
 export class InventoryService {
   constructor(value: any)
   authenticate(credentials?: { profileId?: string; profileSecret?: string }): any
-  create(credentials: { profileId: string; profileSecret: string }): any
+  create(credentials: { profileId: string; profileSecret: string }, options?: { gender?: string }): any
+  migrateLegacyState(): boolean
+  saveAvatarAll(profileId: string, payload?: { features?: Record<string, unknown>; equippedSlots?: Record<string, string | null> }): any
   grant(profileId: string, itemId: string, quantity?: number, metadata?: Record<string, any>): void
   spend(profileId: string, itemId: string, count?: number): void
   getCoins(profileId: string): { gold: number; heart: number }

@@ -4,12 +4,12 @@
       <!-- Header with Currency balance -->
       <div class="panel-header">
         <div class="flex items-center gap-2">
-          <span class="text-xl">🏪</span>
+          <span class="text-xl"><DesignIcon name="shop" /></span>
           <div>
             <h2 class="text-base font-bold text-stone-800 leading-tight">元宇宙金币商城</h2>
             <div class="flex items-center gap-3 mt-0.5 text-xs font-semibold">
-              <span class="text-amber-700">🪙 金币: {{ coins.gold }}</span>
-              <span class="text-rose-700">💖 爱心币: {{ coins.heart }}</span>
+              <span class="text-amber-700"><DesignIcon name="coin" /> 金币: {{ coins.gold }}</span>
+              <span class="text-rose-700"><DesignIcon name="heart" /> 爱心币: {{ coins.heart }}</span>
             </div>
           </div>
         </div>
@@ -25,7 +25,7 @@
           :class="{ active: currentTab === tab.key }"
           @click="currentTab = tab.key"
         >
-          <span>{{ tab.icon }}</span>
+          <span><DesignIcon :name="tab.key === 'furniture' ? 'sofa' : tab.key === 'wardrobe' ? 'shirt' : tab.key === 'wish_coupon' ? 'heart' : 'bag'" /></span>
           <span>{{ tab.label }}</span>
         </button>
       </div>
@@ -39,12 +39,12 @@
           :class="`rarity-${item.rarity || 'common'}`"
         >
           <div class="item-badge">{{ rarityLabel(item.rarity) }}</div>
-          <div class="item-icon-box">{{ item.icon || '📦' }}</div>
+          <div class="item-icon-box"><ModelPreview :catalog-id="item.id" :width="110" :height="100" :label="item.name" /></div>
           <div class="item-title">{{ item.name }}</div>
           <p class="item-desc">{{ item.description }}</p>
 
           <div class="card-bottom">
-            <span class="price-tag">🪙 {{ item.price }}</span>
+            <span class="price-tag"><DesignIcon name="coin" /> {{ item.price }}</span>
             <button
               class="buy-btn"
               :disabled="coins.gold < (item.price || 0) || buyingId === item.id"
@@ -60,6 +60,8 @@
 </template>
 
 <script setup lang="ts">
+import DesignIcon from '../DesignIcon.vue'
+import ModelPreview from './ModelPreview.vue'
 import { ref, computed } from 'vue'
 import { platformOverview, buyStoreItem } from '../../utils/platformState'
 import { ITEM_REGISTRY, type CatalogDefinition } from '../../../shared/domain/items/index'

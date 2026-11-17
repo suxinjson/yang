@@ -18,6 +18,7 @@ import { LAYOUTS } from '../shared/layoutCatalog.js'
 import { createLevel, checkCardOverlap } from '../shared/levelGenerator.js'
 import { defaultGameSettings, normalizeGameSettings } from '../shared/gameConfig.js'
 import { getBoardLayout } from '../shared/boardGeometry.js'
+import { winningActions } from './helpers/gameProof.mjs'
 
 function seed(n) { return () => { n = Math.imul(1664525, n) + 1013904223 | 0; return (n >>> 0) / 4294967296 } }
 function safeRemove(directory) {
@@ -79,7 +80,7 @@ test('legacy photos migrate once into ordinary groups and reward percentages hav
 async function startBackend(directory, env={}) {
   let child,base
   async function start() {
-    child=fork(path.resolve('server.js'),[],{env:{...process.env,PORT:'0',DATA_DIR:directory,...env},silent:true})
+    child=fork(path.resolve('server.js'),[],{env:{...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password',PORT:'0',DATA_DIR:directory,...env},silent:true})
     let errors=''
     child.stderr.on('data',data=>errors+=data)
     const result=await Promise.race([once(child,'message'),once(child,'exit').then(()=>{throw new Error('Backend exited: '+errors)}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(new Error('Backend startup timed out')),12000);timer.unref()})])
@@ -101,7 +102,7 @@ async function exerciseBackpack(server) {
   const a=credentials(),b=credentials()
   const post=(url,body={},who=a,admin='')=>fetch(server.base+url,{method:'POST',headers:{'Content-Type':'application/json',...(admin?{Authorization:'Bearer '+admin}:{})},body:JSON.stringify({...who,deviceId:'node_test_device',sessionId:'node_test_session',platform:'android',...body})})
   const json=async response=>{assert.equal(response.status,200,await response.clone().text());return response.json()}
-  const admin=(await json(await post('/api/admin/login',{password:'admin'}))).token
+  const admin=(await json(await post('/api/admin/login',{password:'test-admin-password'}))).token
   await json(await post('/api/config',{rewardPolicy:{simultaneous:true,hintChance:100,rescueChance:100,couponChance:100},gameSettings:{levels:[{minCards:12,maxCards:12,types:3}]}},a,admin))
   await json(await post('/api/coupons',{id:'legacy_privacy_sample',title:'legacy sample',used:false,target:'boyfriend_pays'},a,admin))
   await json(await post('/api/play/profile',{},a));await json(await post('/api/play/profile',{},b))
@@ -116,7 +117,7 @@ async function exerciseBackpack(server) {
   await server.restart()
   await json(await post('/api/play/solo/tool',tool))
   round=await start();assert.equal(round.game.tools.hint,1)
-  const finish={roundId:round.game.roundId,token:round.token,outcome:'won'}
+  const finish={roundId:round.game.roundId,token:round.token,outcome:'won',actions:winningActions(round.game)}
   const reward=await json(await post('/api/play/solo/finish',finish))
   assert.equal(reward.rewards.length,2);assert.equal(reward.backpack.coupons.length,1)
   await json(await post('/api/play/solo/finish',finish));await server.restart()
@@ -124,7 +125,7 @@ async function exerciseBackpack(server) {
   assert.equal(duplicate.backpack.coupons.length,1);assert.equal(duplicate.backpack.tools.hint,2)
   const legacyUse=await json(await post('/api/coupons/redeem',{id:'legacy_privacy_sample'},b))
   assert.ok(!legacyUse.list.some(coupon=>coupon.ownerId))
-  const activeAdmin=(await json(await post('/api/admin/login',{password:'admin'}))).token
+  const activeAdmin=(await json(await post('/api/admin/login',{password:'test-admin-password'}))).token
   const legacyDraw={operationId:crypto.randomUUID(),context:'win_1'}
   const issued=await json(await post('/api/coupons/draw',legacyDraw,b,activeAdmin))
   const recovered=await json(await post('/api/coupons/draw',legacyDraw,b))
@@ -162,10 +163,35 @@ async function exerciseBackpack(server) {
   const overview=await json(await post('/api/play/admin/control',{profileId:a.profileId,action:'grant_tool',tool:'hint',count:1,operationId:crypto.randomUUID()},a,activeAdmin))
   assert.ok(overview.success)
 }
+test('legacy platform repair resumes missing pet deadlines and removes only audited paid jobs once',()=>{
+  const state={coupons:[]}, service=new InventoryService(state), credentials={profileId:crypto.randomUUID(),profileSecret:crypto.randomBytes(32).toString('hex')}
+  service.create(credentials)
+  const profile=state.profiles[credentials.profileId]
+  delete profile.starterFurnitureGranted
+  state.companions[profile.id].petStatus='foraging'
+  delete state.companions[profile.id].petForageEndAt
+  state.idleJobs[profile.id]={jobId:'job_barista',startedAt:new Date(Date.now()-7200000).toISOString()}
+  state.transactions.push({event:'idle_job_claim',profileId:profile.id,at:new Date().toISOString(),details:{jobId:'job_barista'}})
+  assert.equal(service.migrateLegacyState(),true)
+  assert.equal(state.idleJobs[profile.id],undefined)
+  assert.ok(Date.parse(state.companions[profile.id].petForageEndAt)>Date.now())
+  assert.equal(profile.items['furniture.sofa.modern'].quantity,1)
+  assert.equal(service.migrateLegacyState(),false)
+})
 test('file adapter: private ownership, one-time starter, idempotent rewards, restart recovery and per-player room inventory',async()=>{
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'yang-inventory-file-'))
   const server=await startBackend(directory,{STORAGE_DRIVER:'file'})
   try{await exerciseBackpack(server)}finally{await server.stop();safeRemove(directory)}
+})
+test('fresh deployment disables administrator login without an explicit initial password',async()=>{
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'yang-inventory-admin-'))
+  const server=await startBackend(directory,{STORAGE_DRIVER:'file',ADMIN_INITIAL_PASSWORD:''})
+  try {
+    for(const password of ['admin','',null]) {
+      const response=await fetch(server.base+'/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})})
+      assert.equal(response.status,401)
+    }
+  } finally {await server.stop();safeRemove(directory)}
 })
 test('PostgreSQL 17: backup-gated migration, constraints, atomic rollback, instance lock and real gameplay persistence', {timeout:120000}, async()=>{
   const directory=fs.mkdtempSync(path.join(os.tmpdir(),'yang-inventory-pg-'))
@@ -180,7 +206,7 @@ test('PostgreSQL 17: backup-gated migration, constraints, atomic rollback, insta
     await pool.query("CREATE USER ganglegang_test_app WITH PASSWORD 'test-only-app-secret'")
     await pool.query('CREATE DATABASE ganglegang_test OWNER ganglegang_test_app')
     const binaries=process.platform === 'win32' ? await import('@embedded-postgres/windows-x64') : {}
-    const env={...process.env,STORAGE_DRIVER:'postgres',PGHOST:'127.0.0.1',PGPORT:String(port),PGDATABASE:'ganglegang_test',PGUSER:'ganglegang_test_app',PGPASSWORD:'test-only-app-secret',BACKUP_DIR:path.join(directory,'backups'),PG_DUMP_BIN:await postgresDumpBinary(binaries)}
+    const env={...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password',STORAGE_DRIVER:'postgres',PGHOST:'127.0.0.1',PGPORT:String(port),PGDATABASE:'ganglegang_test',PGUSER:'ganglegang_test_app',PGPASSWORD:'test-only-app-secret',BACKUP_DIR:path.join(directory,'backups'),PG_DUMP_BIN:await postgresDumpBinary(binaries)}
     delete env.DATABASE_URL
     const refused=spawnSync(process.execPath,['scripts/migrate-database.mjs'],{env:{...env,PG_DUMP_BIN:path.join(directory,'missing-pg-dump')},encoding:'utf8'})
     assert.notEqual(refused.status,0)
@@ -201,10 +227,55 @@ test('PostgreSQL 17: backup-gated migration, constraints, atomic rollback, insta
     await assert.rejects(repository.save(invalid),/check constraint/)
     assert.deepEqual(repository.load(),before)
     await assert.rejects(PostgresStateRepository.open(()=>({})),/已有游戏实例/)
+    const blockedMigration=spawnSync(process.execPath,['scripts/migrate-database.mjs'],{env,encoding:'utf8'})
+    assert.notEqual(blockedMigration.status,0)
+    assert.match(blockedMigration.stderr,/先停止游戏服务/)
+    const platform=repository.load()
+    platform.idleJobs[credentials.profileId]={id:crypto.randomUUID(),jobId:'job_barista',startedAt:new Date(Date.now()-7200000).toISOString(),durationSeconds:3600,rewardCoins:150,claimed:false}
+    platform.companions[credentials.profileId].petStatus='foraging'
+    platform.companions[credentials.profileId].petForageEndAt=new Date(Date.now()+3600000).toISOString()
+    // Platform state changes must persist even without a profile revision change.
+    await repository.save(platform)
+    const probe=new pg.Pool({...databaseOptions(env),max:1})
+    const count=Number((await probe.query('SELECT count(*) AS n FROM player_inventory')).rows[0].n)
+    platform.profiles[credentials.profileId].revision++
+    await repository.save(platform)
+    assert.equal(Number((await probe.query('SELECT count(*) AS n FROM player_inventory')).rows[0].n),count)
+    await probe.end()
     await repository.close()
     const reopened=await PostgresStateRepository.open(()=>{throw new Error('Must not remigrate existing state')})
-    assert.deepEqual(new InventoryService(reopened.load()).tools(credentials.profileId),{hint:2,rescue:1});await reopened.close()
-    server=await startBackend(directory,env);await exerciseBackpack(server)
+    assert.deepEqual(new InventoryService(reopened.load()).tools(credentials.profileId),{hint:2,rescue:1})
+    const restored=reopened.load()
+    assert.equal(restored.companions[credentials.profileId].petForageEndAt,platform.companions[credentials.profileId].petForageEndAt)
+    assert.equal(restored.idleJobs[credentials.profileId].id,platform.idleJobs[credentials.profileId].id)
+    delete restored.idleJobs[credentials.profileId]
+    await reopened.save(restored);await reopened.close()
+    const noResurrection=await PostgresStateRepository.open(()=>({}))
+    assert.equal(noResurrection.load().idleJobs[credentials.profileId],undefined)
+    const readyJob=noResurrection.load()
+    readyJob.idleJobs[credentials.profileId]={...platform.idleJobs[credentials.profileId]}
+    await noResurrection.save(readyJob)
+    await noResurrection.close()
+    const projection=new pg.Pool({...databaseOptions(env),max:1})
+    try {
+      await projection.query('DROP INDEX idx_inventory_catalog')
+      await projection.query("INSERT INTO player_inventory(profile_id,category,catalog_id,quantity) SELECT profile_id,category,catalog_id,999 FROM player_inventory WHERE category='wardrobe' LIMIT 1")
+      const repair=spawnSync(process.execPath,['scripts/migrate-database.mjs'],{env,encoding:'utf8'})
+      assert.equal(repair.status,0,repair.stderr)
+      assert.equal(Number((await projection.query('SELECT count(*) AS n FROM player_inventory')).rows[0].n),count)
+      assert.equal((await projection.query('SELECT 1 FROM player_inventory WHERE quantity=999')).rowCount,0)
+    } finally {await projection.end()}
+    server=await startBackend(directory,env)
+    const personalPost=(url,body={})=>fetch(server.base+url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...credentials,...body})})
+    assert.equal((await personalPost('/api/home/companion/pet_reward')).status,400)
+    const receiptToken=crypto.randomUUID()
+    const claimed=await personalPost('/api/home/idle/claim',{receiptToken});assert.equal(claimed.status,200)
+    assert.equal((await claimed.json()).backpack.coins.gold,250)
+    await server.restart()
+    const claimRetry=await personalPost('/api/home/idle/claim',{receiptToken});assert.equal(claimRetry.status,200)
+    assert.equal((await claimRetry.json()).backpack.coins.gold,250)
+    assert.equal((await personalPost('/api/home/idle/claim',{receiptToken:crypto.randomUUID()})).status,409)
+    await exerciseBackpack(server)
     assert.equal(databaseOptions(env).max,5)
     assert.throws(()=>databaseOptions({...env,PGDATABASE:'member'}),/独立数据库/)
     assert.throws(()=>databaseOptions({...env,PGUSER:'member_app'}),/专用业务账号/)

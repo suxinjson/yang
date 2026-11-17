@@ -10,7 +10,7 @@ async function adminFixture(page: Page) {
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url())
     if (url.pathname.endsWith('/admin/login')) {
-      const success = route.request().postDataJSON().password === 'admin'
+      const success = route.request().postDataJSON().password === 'test-admin-password'
       await route.fulfill({ status: success ? 200 : 401, json: success ? { success, token: 'test-admin-session' } : { success } })
     } else if (url.pathname.endsWith('/state')) {
       await route.fulfill({ json: { state: snapshot() } })
@@ -33,7 +33,7 @@ async function adminFixture(page: Page) {
 }
 
 async function login(page: Page) {
-  await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+  await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
   await page.getByRole('button', { name: /登录后台/ }).click()
   await expect(page.getByTestId('game-settings')).toBeVisible()
 }

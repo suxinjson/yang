@@ -8,6 +8,7 @@ if [ -f .env ]; then
   source .env
   set +a
 fi
+STORAGE_DRIVER=${STORAGE_DRIVER:-postgres}
 
 echo ">>> [1/2] 重新构建并平滑启动 Docker 服务..."
 if docker compose version >/dev/null 2>&1; then
@@ -128,16 +129,18 @@ restore_on_failure() {
 }
 trap restore_on_failure EXIT
 
-# 在非测试环境执行数据库结构迁移（如果需要）
-if [ -z "${DEPLOY_TEST_SCENARIO:-}" ] && [ "${STORAGE_DRIVER:-}" = "postgres" ]; then
-  echo ">>> 执行数据库结构初始化与迁移 (npm run db:migrate)..."
-  "${DOCKER_CMD[@]}" run --rm --no-deps ganglegang npm run db:migrate || true
-fi
-
 # 新镜像已构建成功后，才处理手动运行的同名容器。
 if [ -n "$PREVIOUS_IMAGE" ]; then
   echo ">>> 检测到已有同名 ganglegang 容器，正在停止并移除旧容器以释放名称..."
+  docker stop --time 30 ganglegang
   docker rm -f ganglegang
+fi
+
+# The old coordinator must release its advisory lock before backup and migration.
+# A failed backup or migration stops deployment and triggers image rollback.
+if [ "${STORAGE_DRIVER:-}" = "postgres" ]; then
+  echo ">>> 执行数据库结构初始化与迁移 (npm run db:migrate)..."
+  "${DOCKER_CMD[@]}" run --rm --no-deps ganglegang npm run db:migrate
 fi
 
 "${DOCKER_CMD[@]}" up -d --no-build --remove-orphans --force-recreate

@@ -12,7 +12,7 @@ async function backend() {
   let child: ReturnType<typeof fork>
   let base = ''
   async function start() {
-    child = fork(path.resolve('server.js'), [], { env: { ...process.env, PORT: '0', DATA_DIR: directory }, silent: true })
+    child = fork(path.resolve('server.js'), [], { env: { ...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password', PORT: '0', DATA_DIR: directory }, silent: true })
     const [message] = await Promise.race([once(child, 'message'), new Promise<never>((_, reject) => { const timer = setTimeout(() => reject(new Error('Server timeout')), 10000); timer.unref() })])
     base = `http://127.0.0.1:${message.port}`
   }
@@ -40,7 +40,7 @@ test('native and web pages synchronize names, photos, rewards, redemption and re
   const server = await backend()
   const native = await browser.newPage()
   try {
-    const login = await (await server.post('/api/admin/login', { password: 'admin' })).json()
+    const login = await (await server.post('/api/admin/login', { password: 'test-admin-password' })).json()
     await server.post('/api/config', { gfPenaltyRatio: 0, boyfriendRewards: [{ id: 'sync_reward', title: '跨页面同步奖励', desc: '同步测试', icon: '🎁', target: 'boyfriend_pays' }] }, login.token)
     await server.post('/api/coupons/reset', {}, login.token)
     await server.attach(page)
@@ -85,7 +85,7 @@ test('stale responses never roll back a newer revision or a restarted server', (
 test('configuration conflicts are rejected; reward idempotency survives reset and restart; corrupt storage never resets silently', async () => {
   const server = await backend()
   try {
-    const login = await (await server.post('/api/admin/login', { password: 'admin' })).json()
+    const login = await (await server.post('/api/admin/login', { password: 'test-admin-password' })).json()
     const initial = (await (await fetch(server.base + '/api/state')).json()).state
     const first = await server.post('/api/config', { couponName: 'first' }, login.token, initial.configVersion)
     expect(first.status).toBe(200)
@@ -125,7 +125,7 @@ test('coupon slot unlock waits for successful redemption and ignores busy or dup
   const server = await backend()
   let release: (() => void) | undefined
   try {
-    const login = await (await server.post('/api/admin/login', { password: 'admin' })).json()
+    const login = await (await server.post('/api/admin/login', { password: 'test-admin-password' })).json()
     await server.post('/api/config', { gameSettings: { slotUnlockCondition: 'love_coupon' } }, login.token)
     await server.attach(page)
     await page.goto('/')
@@ -167,7 +167,7 @@ for (const native of [false, true]) {
   test(`${native ? 'native' : 'web'} levels four and five award distinct win coupons`, async ({ page }) => {
     const server = await backend()
     try {
-      const login = await (await server.post('/api/admin/login', { password: 'admin' })).json()
+      const login = await (await server.post('/api/admin/login', { password: 'test-admin-password' })).json()
       await server.post('/api/config', { gameSettings: { totalLevels: 5, levels: Array.from({ length: 5 }, () => ({ minCards: 6, maxCards: 6, types: 1 })) } }, login.token)
       await server.attach(page)
       if (native) await page.addInitScript(() => { (window as any).androidBridge = {} })
@@ -191,8 +191,10 @@ for (const native of [false, true]) {
       }
       await expect.poll(() => completions.length).toBe(2)
       expect(new Set(completions).size).toBe(2)
-      const coupons = await page.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.loveCoupons)
-      expect(coupons.filter((coupon: any) => /第 [45] 关通关/.test(coupon.obtainedAt))).toHaveLength(2)
+      await expect.poll(async () => {
+        const coupons = await page.evaluate(() => (document.querySelector('#app') as any).__vue_app__._instance.setupState.loveCoupons)
+        return coupons.filter((coupon: any) => /第 [45] 关通关/.test(coupon.obtainedAt)).length
+      }).toBe(2)
       const invalid = await server.post('/api/coupons/draw', { deviceId: 'test_device_123', operationId: 'invalid_level_123', context: 'win_6' })
       expect(invalid.status).toBe(400)
     } finally { await page.close(); await server.close() }
@@ -204,10 +206,10 @@ test('open dashboard keeps unsaved edits and warns when another page changes con
   try {
     await server.attach(page)
     await page.goto('/?admin')
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
     await page.getByRole('button', { name: /登录后台/ }).click()
     await page.getByLabel('棋盘宽度', { exact: true }).fill('380')
-    const login = await (await server.post('/api/admin/login', { password: 'admin' })).json()
+    const login = await (await server.post('/api/admin/login', { password: 'test-admin-password' })).json()
     await server.post('/api/config', { couponName: '远程最新名称' }, login.token)
     await expect(page.getByText('其他页面已更新配置，当前修改已保留。', { exact: false })).toBeVisible({ timeout: 15000 })
     await expect(page.getByLabel('棋盘宽度', { exact: true })).toHaveValue('380')
@@ -225,7 +227,7 @@ test('a remote update while save acknowledgement is delayed remains a conflict',
   try {
     await server.attach(page)
     await page.goto('/?admin')
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
     await page.getByRole('button', { name: /登录后台/ }).click()
     await page.route('**/api/config', async route => {
       if (route.request().method() !== 'POST') return route.fallback()
@@ -237,7 +239,7 @@ test('a remote update while save acknowledgement is delayed remains a conflict',
     await page.getByLabel('棋盘宽度', { exact: true }).fill('380')
     await page.getByRole('button', { name: '保存关卡配置', exact: true }).click()
     await expect.poll(() => held).toBe(true)
-    const login = await (await server.post('/api/admin/login', { password: 'admin' })).json()
+    const login = await (await server.post('/api/admin/login', { password: 'test-admin-password' })).json()
     const remote = await (await server.post('/api/config', { couponName: 'newer_remote' }, login.token)).json()
     await page.evaluate(async state => {
       const modulePath = '/src/utils/serverState.ts'

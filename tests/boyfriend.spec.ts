@@ -17,7 +17,7 @@ async function setup(page: Page) {
   await server.attach(page)
   await page.setViewportSize({ width: 390, height: 900 })
   await page.goto('/?admin')
-  await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+  await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
   await page.getByRole('button', { name: /登录后台/ }).click()
   await page.getByRole('button', { name: /卡牌种类与图片/ }).click()
   await page.getByText('救场形象设置', { exact: true }).click()

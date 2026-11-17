@@ -67,7 +67,7 @@ test('admin card preview saves display settings and edits cards and reward pools
   const config = () => JSON.parse(readFileSync(path.join(server.directory, 'config.json'), 'utf8'))
   try {
     await server.attach(page); await page.setViewportSize({ width: 1280, height: 900 }); await page.goto('/admin')
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
     await page.getByRole('button', { name: '登录后台', exact: true }).click()
     await page.getByRole('button', { name: '卡牌种类与图片', exact: true }).click()
     await page.getByLabel('卡片文字', { exact: true }).selectOption('none')

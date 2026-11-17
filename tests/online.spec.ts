@@ -36,7 +36,7 @@ test('client journal persists, deduplicates, sanitizes, paginates and requires a
   let child: ChildProcess | undefined
   let base = ''
   async function start() {
-    child = fork(path.resolve('server.js'), [], { env: { ...process.env, PORT: '0', DATA_DIR: directory }, silent: true })
+    child = fork(path.resolve('server.js'), [], { env: { ...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password', PORT: '0', DATA_DIR: directory }, silent: true })
     const port = await new Promise<number>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Server timeout')), 10000)
       child!.once('message', (message: any) => { clearTimeout(timer); resolve(message.port) })
@@ -46,7 +46,7 @@ test('client journal persists, deduplicates, sanitizes, paginates and requires a
   }
   async function stop() { if (child && child.exitCode === null && !child.killed) { const exited = once(child, 'exit'); child.kill(); await exited } }
   const post = (route: string, body: unknown, token?: string) => fetch(`${base}${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Client-Token': token } : {}) }, body: JSON.stringify(body) })
-  async function login() { return (await (await post('/api/admin/login', { password: 'admin' })).json()).token }
+  async function login() { return (await (await post('/api/admin/login', { password: 'test-admin-password' })).json()).token }
   try {
     await start()
     expect((await fetch(`${base}/api/admin/client-logs`)).status).toBe(401)
@@ -107,7 +107,7 @@ test('administrator can filter client records and sees expired authentication', 
     return route.fulfill({ json: url.endsWith('/coupons') ? [] : null })
   })
   await page.goto('/?admin')
-  await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+  await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
   await page.getByRole('button', { name: /登录后台/ }).click()
   await page.getByRole('button', { name: /客户端日志/ }).click()
   await expect(page.locator('article strong').getByText('消耗道具', { exact: true })).toBeVisible()

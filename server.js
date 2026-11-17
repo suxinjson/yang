@@ -10,8 +10,9 @@ import { normalizeBoyfriendSettings } from './shared/boyfriendConfig.js'
 import { registerClientRoutes } from './shared/clientAudit.js'
 import { registerGameplay } from './shared/gameplayServer.js'
 import { registerPlatformRoutes } from './shared/platformServer.js'
+import { registerAppRelease } from './shared/appRelease.js'
 import { normalizeCardCatalog } from './shared/cardGroups.js'
-import { normalizeRewardPolicy } from './shared/inventory.js'
+import { normalizeRewardPolicy, InventoryService } from './shared/inventory.js'
 import { openStateRepository, createSerialExecutor } from './shared/stateRepository.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -34,6 +35,7 @@ if (!fs.existsSync(dataDir)) {
 }
 
 const configFilePath = path.join(dataDir, 'config.json')
+registerAppRelease(app, path.join(dataDir, 'app-releases'))
 const couponsFilePath = path.join(dataDir, 'coupon-ledger.json')
 const legacyCouponsPath = path.join(dataDir, 'coupons.json')
 const syncEpoch = crypto.randomUUID()
@@ -43,7 +45,9 @@ function getServerState() {
   return { epoch: syncEpoch, revision: stateRevision, configVersion: crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex'), config, coupons: publicCoupons() }
 }
 
-const DEFAULT_CONFIG = { ...defaultPublicConfig(), adminPassword: 'admin' }
+const initialAdminPassword = process.env.ADMIN_INITIAL_PASSWORD || ''
+if (initialAdminPassword && initialAdminPassword.length < 12) throw new Error('ADMIN_INITIAL_PASSWORD 至少需要 12 位')
+const DEFAULT_CONFIG = { ...defaultPublicConfig(), adminPassword: initialAdminPassword }
 
 // Atomic write JSON helper to avoid data corruption
 function atomicWriteJson(filePath, data) {
@@ -64,7 +68,7 @@ function loadServerConfig() {
   if (fs.existsSync(configFilePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(configFilePath, 'utf-8'))
-      return { ...DEFAULT_CONFIG, ...data, ...normalizeBoyfriendSettings(data), ...normalizeCardCatalog(data), rewardPolicy: normalizeRewardPolicy(data.rewardPolicy), gameSettings: normalizeGameSettings(data?.gameSettings) }
+      return { ...DEFAULT_CONFIG, ...data, adminPassword: data.adminPassword || initialAdminPassword, ...normalizeBoyfriendSettings(data), ...normalizeCardCatalog(data), rewardPolicy: normalizeRewardPolicy(data.rewardPolicy), gameSettings: normalizeGameSettings(data?.gameSettings) }
     } catch (e) { console.error('Failed to read config file', e); throw e }
   }
   atomicWriteJson(configFilePath, DEFAULT_CONFIG)
@@ -119,6 +123,11 @@ function loadLegacyLedger() {
 }
 
 const repository = await openStateRepository(dataDir, loadLegacyLedger, atomicWriteJson)
+// Legacy account credentials are recoverable only via password login from now on.
+const startupLedger = repository.load()
+let sanitized = new InventoryService(startupLedger).migrateLegacyState()
+for (const user of Object.values(startupLedger.users || {})) if (Object.hasOwn(user, 'profileSecret')) { delete user.profileSecret; sanitized = true }
+if (sanitized) await repository.save(startupLedger)
 const runExclusive = createSerialExecutor()
 function loadCouponLedger() { return repository.load() }
 function loadServerCoupons() { return loadCouponLedger().coupons }
@@ -226,7 +235,7 @@ app.post('/api/admin/login', (req, res) => {
 
   const { password } = req.body || {}
   const cfg = loadServerConfig()
-  if (password === cfg.adminPassword) {
+  if (typeof password === 'string' && cfg.adminPassword && password === cfg.adminPassword) {
     loginAttempts.delete(clientIp)
     const token = generateAdminToken()
     res.json({ success: true, token })
@@ -247,8 +256,8 @@ function publicConfig(config) {
 
 app.post('/api/admin/password', requireAdminAuth, (req, res) => {
   const password = req.body?.password
-  if (typeof password !== 'string' || password.trim().length < 3 || password.length > 128) {
-    return res.status(400).json({ success: false, error: '密码长度应为 3–128 位' })
+  if (typeof password !== 'string' || password.trim().length < 12 || password.length > 128) {
+    return res.status(400).json({ success: false, error: '密码长度应为 12–128 位' })
   }
   const current = loadServerConfig()
   saveServerConfig({ ...current, adminPassword: password })

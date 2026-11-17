@@ -115,7 +115,7 @@ test('admin warns about exact 520, preserves it across thirteen levels, and 519 
     await server.post('/api/config', { gameSettings: { levels: [fixed(6), fixed(6), fixed(6)] } }, await server.login())
     await server.attach(page)
     await page.goto('/admin')
-    await page.getByPlaceholder('请输入管理员密码...').fill('admin')
+    await page.getByPlaceholder('请输入管理员密码...').fill('test-admin-password')
     await page.getByRole('button', { name: '登录后台', exact: true }).click()
     await page.getByLabel('关卡数量', { exact: true }).fill('12')
     await page.getByLabel('关卡数量', { exact: true }).press('Tab')

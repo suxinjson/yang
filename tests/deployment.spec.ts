@@ -8,7 +8,7 @@ const bash = process.env.BASH_BINARY || (process.platform === 'win32' ? 'C:/Prog
 
 // Run the actual deployment script with shell functions standing in for Docker,
 // health probes and delays. No real containers, network or deployment are used.
-for (const scenario of ['build-failure', 'startup-failure', 'health-failure', 'success', 'legacy-build-failure']) {
+for (const scenario of ['build-failure', 'startup-failure', 'health-failure', 'migration-failure', 'success', 'legacy-build-failure']) {
   test(`deployment ${scenario} ${scenario === 'success' ? 'keeps the new image' : 'keeps or restores the old service'}`, () => {
     test.skip(!existsSync(bash), 'Bash is required to exercise the deployment script')
     const directory = mkdtempSync(path.join(tmpdir(), 'yang-deploy-test-'))
@@ -25,12 +25,16 @@ docker() {
     return 0
   fi
   if [ "$1" = rm ]; then printf removed > "$DEPLOY_TEST_DIR/service"; return 0; fi
+  if [ "$1" = stop ]; then return 0; fi
   if [ "$1" = network ]; then return 0; fi
   if [ "$1" != compose ]; then return 1; fi
   shift
   case "$1" in
     version) [ "$DEPLOY_TEST_SCENARIO" != legacy-build-failure ]; return $? ;;
     build) [[ "$DEPLOY_TEST_SCENARIO" != *build-failure ]]; return $? ;;
+    run)
+      [ "$(cat "$DEPLOY_TEST_DIR/service")" = removed ] || return 2
+      [ "$DEPLOY_TEST_SCENARIO" != migration-failure ]; return $? ;;
     up)
       if [ "$DEPLOY_TEST_SCENARIO" = startup-failure ]; then return 1; fi
       printf new > "$DEPLOY_TEST_DIR/service" ;;
@@ -47,7 +51,7 @@ sleep() { :; }
 `)
       const result = spawnSync(bash, [path.resolve('deploy/deploy-update.sh').replace(/\\/g, '/')], {
         cwd: directory, encoding: 'utf8', timeout: 10000, windowsHide: true,
-        env: { ...process.env, BASH_ENV: mock.replace(/\\/g, '/'), DEPLOY_TEST_DIR: directory.replace(/\\/g, '/'), DEPLOY_TEST_SCENARIO: scenario }
+        env: { ...process.env, STORAGE_DRIVER: 'postgres', BASH_ENV: mock.replace(/\\/g, '/'), DEPLOY_TEST_DIR: directory.replace(/\\/g, '/'), DEPLOY_TEST_SCENARIO: scenario }
       })
       expect(result.error).toBeUndefined()
       expect(result.status, result.stdout + result.stderr).toBe(scenario === 'success' ? 0 : 1)
@@ -58,6 +62,7 @@ sleep() { :; }
         expect(calls).not.toContain(' up ')
       } else {
         expect(calls.indexOf('compose build')).toBeLessThan(calls.indexOf('rm -f'))
+        expect(calls.indexOf('rm -f')).toBeLessThan(calls.indexOf('compose run --rm --no-deps ganglegang npm run db:migrate'))
         if (scenario !== 'success') {
           expect(calls).toContain('compose -f compose.yaml -f ')
           expect(calls).toContain('network connect --alias ganglegang caddy-test-network ganglegang')

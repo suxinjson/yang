@@ -27,7 +27,7 @@ export class PostgresStateRepository {
       // The room coordinator currently supports one instance. Refuse stale-cache writers.
       const lock = await repository.lock.query('SELECT pg_try_advisory_lock(721614, 1) AS acquired')
       if (!lock.rows[0].acquired) throw new Error('已有游戏实例连接此库，请勿同时启动多个实例')
-      const version = await repository.lock.query('SELECT version FROM app_schema_version WHERE version=1')
+      const version = await repository.lock.query('SELECT version FROM app_schema_version WHERE version=3')
       if (!version.rowCount) throw new Error('请先备份并执行 npm run db:migrate')
       const state = await repository.lock.query('SELECT payload FROM gameplay_state WHERE id=1')
       if (!state.rowCount) await repository.save(migrate())
@@ -55,18 +55,20 @@ export class PostgresStateRepository {
           equippedSlots: r.equipped_slots || {}
         }]))
 
-        const companions = await repository.lock.query('SELECT profile_id, partner_name, favorability, partner_avatar, pet_type, pet_hunger, pet_status FROM companion_states')
+        const companions = await repository.lock.query('SELECT profile_id, partner_name, favorability, partner_avatar, pet_type, pet_hunger, pet_status, pet_forage_end_at FROM companion_states')
         repository.value.companions = Object.fromEntries(companions.rows.map(r => [r.profile_id, {
           partnerName: r.partner_name,
           favorability: r.favorability,
           partnerAvatar: r.partner_avatar,
           petType: r.pet_type,
           petHunger: r.pet_hunger,
-          petStatus: r.pet_status
+          petStatus: r.pet_status,
+          petForageEndAt: r.pet_forage_end_at?.toISOString() || null
         }]))
 
-        const jobs = await repository.lock.query('SELECT profile_id, job_id, started_at, duration_seconds, reward_coins, claimed FROM idle_jobs WHERE claimed = false')
+        const jobs = await repository.lock.query('SELECT profile_id, instance_id, job_id, started_at, duration_seconds, reward_coins, claimed FROM idle_jobs WHERE claimed = false')
         repository.value.idleJobs = Object.fromEntries(jobs.rows.map(r => [r.profile_id, {
+          id: r.instance_id,
           jobId: r.job_id,
           startedAt: r.started_at,
           durationSeconds: r.duration_seconds,
@@ -88,11 +90,12 @@ export class PostgresStateRepository {
       await client.query('INSERT INTO gameplay_state(id,payload) VALUES(1,$1) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload', [JSON.stringify(gameplay)])
       
       for (const profile of Object.values(profiles)) {
-        if (JSON.stringify(this.value?.profiles?.[profile.id]) === JSON.stringify(profile)) continue
+        if (['profiles', 'homeSpaces', 'avatars', 'companions', 'idleJobs'].every(key => JSON.stringify(this.value?.[key]?.[profile.id]) === JSON.stringify(value[key]?.[profile.id]))) continue
         const { items = {}, ...account } = profile
         await client.query('INSERT INTO profiles(id,payload) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload', [profile.id, JSON.stringify(account)])
         
-        // Write to legacy inventory table (enforces CHECK (quantity >= 0))
+        await client.query('DELETE FROM inventory WHERE profile_id=$1 AND NOT (item_id=ANY($2::text[]))', [profile.id, Object.keys(items)])
+        // Canonical inventory enforces CHECK (quantity >= 0).
         for (const item of Object.values(items)) {
           await client.query(
             'INSERT INTO inventory(profile_id,item_id,quantity,payload) VALUES($1,$2,$3,$4) ON CONFLICT(profile_id,item_id) DO UPDATE SET quantity=excluded.quantity,payload=excluded.payload',
@@ -108,16 +111,18 @@ export class PostgresStateRepository {
           await client.query(
             `INSERT INTO player_profiles(profile_id, secret_hash, gold_coins, heart_coins, revision, updated_at)
              VALUES($1, $2, $3, $4, $5, NOW())
-             ON CONFLICT(profile_id) DO UPDATE SET gold_coins=excluded.gold_coins, heart_coins=excluded.heart_coins, revision=excluded.revision, updated_at=NOW()`,
+             ON CONFLICT(profile_id) DO UPDATE SET secret_hash=excluded.secret_hash, gold_coins=excluded.gold_coins, heart_coins=excluded.heart_coins, revision=excluded.revision, updated_at=NOW()`,
             [profile.id, secretHash, gold, heart, profile.revision || 0]
           )
 
+          // The v3 migration repairs duplicates; the unique catalog projection is idempotent.
+          await client.query('DELETE FROM player_inventory WHERE profile_id=$1 AND NOT (catalog_id=ANY($2::text[]))', [profile.id, Object.keys(items)])
           for (const item of Object.values(items)) {
             const cat = item.category || (item.itemId.startsWith('wardrobe.') ? 'wardrobe' : item.itemId.startsWith('furniture.') ? 'furniture' : 'game_tool')
             await client.query(
               `INSERT INTO player_inventory(profile_id, category, catalog_id, quantity, is_equipped, metadata, updated_at)
                VALUES($1, $2, $3, $4, $5, $6, NOW())
-               ON CONFLICT(profile_id, catalog_id) WHERE (category IN ('currency', 'game_tool', 'pet_supply', 'work_token'))
+               ON CONFLICT(profile_id, catalog_id)
                DO UPDATE SET quantity=excluded.quantity, is_equipped=excluded.is_equipped, metadata=excluded.metadata, updated_at=NOW()`,
               [profile.id, cat, item.itemId, item.quantity, Boolean(item.isEquipped), JSON.stringify(item.metadata || {})]
             )
@@ -146,22 +151,22 @@ export class PostgresStateRepository {
           if (companions[profile.id]) {
             const cp = companions[profile.id]
             await client.query(
-              `INSERT INTO companion_states(profile_id, partner_name, favorability, partner_avatar, pet_type, pet_hunger, pet_status, updated_at)
-               VALUES($1, $2, $3, $4, $5, $6, $7, NOW())
-               ON CONFLICT(profile_id) DO UPDATE SET partner_name=excluded.partner_name, favorability=excluded.favorability, partner_avatar=excluded.partner_avatar, pet_type=excluded.pet_type, pet_hunger=excluded.pet_hunger, pet_status=excluded.pet_status, updated_at=NOW()`,
-              [profile.id, cp.partnerName || '亲爱的', cp.favorability || 100, JSON.stringify(cp.partnerAvatar || {}), cp.petType || 'cat', cp.petHunger || 80, cp.petStatus || 'idle']
+              `INSERT INTO companion_states(profile_id, partner_name, favorability, partner_avatar, pet_type, pet_hunger, pet_status, pet_forage_end_at, updated_at)
+               VALUES($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+               ON CONFLICT(profile_id) DO UPDATE SET partner_name=excluded.partner_name, favorability=excluded.favorability, partner_avatar=excluded.partner_avatar, pet_type=excluded.pet_type, pet_hunger=excluded.pet_hunger, pet_status=excluded.pet_status, pet_forage_end_at=excluded.pet_forage_end_at, updated_at=NOW()`,
+              [profile.id, cp.partnerName || '亲爱的', cp.favorability ?? 100, JSON.stringify(cp.partnerAvatar || {}), cp.petType || 'cat', cp.petHunger ?? 80, cp.petStatus || 'idle', cp.petForageEndAt || null]
             )
           }
 
           if (idleJobs[profile.id]) {
             const ij = idleJobs[profile.id]
             await client.query(
-              `INSERT INTO idle_jobs(profile_id, job_id, started_at, duration_seconds, reward_coins, claimed)
-               VALUES($1, $2, $3, $4, $5, $6)
-               ON CONFLICT(profile_id) DO UPDATE SET job_id=excluded.job_id, started_at=excluded.started_at, duration_seconds=excluded.duration_seconds, reward_coins=excluded.reward_coins, claimed=excluded.claimed`,
-              [profile.id, ij.jobId, ij.startedAt, ij.durationSeconds, ij.rewardCoins, Boolean(ij.claimed)]
+              `INSERT INTO idle_jobs(profile_id, job_id, started_at, duration_seconds, reward_coins, claimed, instance_id)
+               VALUES($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT(profile_id) DO UPDATE SET job_id=excluded.job_id, started_at=excluded.started_at, duration_seconds=excluded.duration_seconds, reward_coins=excluded.reward_coins, claimed=excluded.claimed, instance_id=excluded.instance_id`,
+              [profile.id, ij.jobId, ij.startedAt, ij.durationSeconds, ij.rewardCoins, Boolean(ij.claimed), ij.id || null]
             )
-          }
+          } else await client.query('DELETE FROM idle_jobs WHERE profile_id=$1', [profile.id])
         }
       }
       await client.query('COMMIT')

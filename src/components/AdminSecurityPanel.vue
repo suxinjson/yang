@@ -2,7 +2,7 @@
   <section class="space-y-6">
     <h2 class="panel-title">密码安全</h2>
     <form class="admin-panel space-y-4 max-w-lg" @submit.prevent="changePassword">
-      <label class="admin-field">新密码<input v-model="password" type="password" placeholder="输入新的后台密码..." autocomplete="new-password" minlength="3" required /></label>
+      <label class="admin-field">新密码<input v-model="password" type="password" placeholder="输入新的后台密码..." autocomplete="new-password" minlength="12" maxlength="128" required /></label>
       <label class="admin-field">确认密码<input v-model="confirmation" type="password" placeholder="再次确认新密码..." autocomplete="new-password" required /></label>
       <button class="admin-primary" :disabled="busy">保存新密码</button>
     </form>
@@ -19,7 +19,7 @@ const password = ref(''), confirmation = ref(''), message = ref(''), success = r
 async function changePassword() {
   if (busy.value) return
   success.value = false
-  if (password.value.length < 3) { message.value = '密码至少 3 位'; return }
+  if (password.value.trim().length < 12) { message.value = '密码至少 12 位'; return }
   if (password.value !== confirmation.value) { message.value = '两次密码不一致'; return }
   busy.value = true
   success.value = await apiChangePassword(password.value)

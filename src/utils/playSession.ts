@@ -1,9 +1,9 @@
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 import type { GameState, GameAction } from '../../shared/gameEngine.js'
 import { getBaseUrl } from './api'
 import { clientIdentity, operationError } from './clientSession'
 import { acceptServerState } from './serverState'
-import { ensureProfile, profileCredentials, acceptBackpack } from './backpack'
+import { ensureProfile, profileCredentials, acceptBackpack, accountGeneration } from './backpack'
 
 export interface RoomInfo { id: string; code: string; revision: number; epoch: string; members: number; connected: number; expiresAt: number }
 export const playMode = ref<'solo' | 'couple'>('solo')
@@ -18,16 +18,20 @@ let pending: { type: string; operationId: string; revision: number; roundId: str
 let sentPending = false
 
 export async function playPost(path: string, body: Record<string, unknown>, timeoutMs = 8000) {
+  const generation = accountGeneration.value
   await ensureProfile()
+  if (generation !== accountGeneration.value) throw new Error('账号已切换，请重试')
   const response = await fetch(getBaseUrl() + '/api/play/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...clientIdentity(), ...body, ...profileCredentials() }), signal: AbortSignal.timeout(timeoutMs) })
   const data = await response.json()
+  if (generation !== accountGeneration.value) throw new Error('账号已切换，请重试')
   if (data.backpack) acceptBackpack(data.backpack)
   if (data.state) acceptServerState(data.state)
   if (!response.ok) throw Object.assign(new Error(data.error || '服务暂不可用，请重试'), { status: response.status })
   if (data.serverNow) serverOffset.value = data.serverNow - Date.now()
   return data
 }
+watch(accountGeneration, () => stopRoom(), { flush: 'sync' })
 function clearPending() {
   pending = null; roomBusy.value = false; sentPending = false
   if (timeout) clearTimeout(timeout)

@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="panel-header">
         <div class="flex items-center gap-2">
-          <span class="text-xl">💖</span>
+          <span class="text-xl"><DesignIcon name="heart" /></span>
           <div>
             <h2 class="text-base font-bold text-stone-800 leading-tight">伴侣羁绊与宠物空间</h2>
             <p class="text-xs text-stone-500">陪伴是最长情的告白，抚育毛孩子收获意外宝藏！</p>
@@ -18,12 +18,12 @@
         <div class="section-card partner-card">
           <div class="flex items-center gap-3">
             <div class="partner-avatar">
-              <span class="text-3xl">🧑‍💼</span>
+              <PaperDoll :width="48" :height="68" gender="male" />
             </div>
             <div class="flex-1">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-stone-800 text-sm">{{ companion?.partnerName || '亲爱的' }}</span>
-                <span class="text-xs font-semibold text-rose-600">好感度 {{ companion?.favorability || 100 }} 💕</span>
+                <span class="text-xs font-semibold text-rose-600">好感度 {{ companion?.favorability || 100 }} <DesignIcon name="heart" /></span>
               </div>
               <p class="text-xs text-stone-600 mt-1 italic">
                 “{{ currentLoveQuote || '今天也超级想你，小家因为有你才温馨！' }}”
@@ -41,11 +41,11 @@
         <div class="section-card pet-card mt-4">
           <div class="flex items-center gap-3">
             <div class="pet-avatar">
-              <span class="text-4xl">🐱</span>
+              <PetCompanion :type="companion?.petType" />
             </div>
             <div class="flex-1">
               <div class="flex items-center justify-between">
-                <span class="font-bold text-stone-800 text-sm">小猫咪（毛球）</span>
+                <span class="font-bold text-stone-800 text-sm">{{ PETS.find(p => p.id === companion?.petType)?.name || PETS[0]?.name }}</span>
                 <span class="pet-status-pill" :class="companion?.petStatus">
                   {{ petStatusText }}
                 </span>
@@ -53,25 +53,31 @@
               <!-- Hunger Bar -->
               <div class="mt-2">
                 <div class="flex justify-between text-xs text-stone-500 mb-1">
-                  <span>饱腹感：{{ companion?.petHunger || 80 }}/100</span>
-                  <span v-if="(companion?.petHunger || 80) >= 80" class="text-emerald-600 font-semibold">吃饱饱寻宝中！</span>
+                  <span>饱腹感：{{ companion?.petHunger ?? 80 }}/100</span>
+                  <span v-if="(companion?.petHunger ?? 80) >= 80" class="text-emerald-600 font-semibold">吃饱饱寻宝中！</span>
                   <span v-else class="text-amber-600 font-semibold">小猫肚子饿啦~</span>
                 </div>
                 <div class="progress-track">
-                  <div class="progress-fill" :style="{ width: `${companion?.petHunger || 80}%` }"></div>
+                  <div class="progress-fill" :style="{ width: `${companion?.petHunger ?? 80}%` }"></div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Pet Action Buttons -->
+          <div class="pet-selection" aria-label="选择宠物">
+  <button v-for="pet in PETS" :key="pet.id" :aria-pressed="companion?.petType === pet.id" :disabled="loading" @click="handleSelectPet(pet.id)">
+    <PetCompanion :type="pet.id" /><strong>{{ pet.name }}</strong><small>{{ pet.description }}</small>
+  </button>
+</div>
+<p v-if="petError" role="alert" class="pet-error">{{ petError }}</p>
+<!-- Pet Action Buttons -->
           <div class="mt-4 flex justify-end gap-2 flex-wrap">
             <button
               class="btn-feed"
               :disabled="loading || (companion?.petHunger || 0) >= 100"
               @click="handleFeed"
             >
-              🥫 喂食深海三文鱼罐头 (+40饱腹)
+              <DesignIcon name="gift" /> 喂食深海三文鱼罐头 (+40饱腹)
             </button>
             <button
               v-if="companion?.petStatus === 'foraging'"
@@ -79,7 +85,7 @@
               :disabled="loading"
               @click="handlePetReward"
             >
-              🎁 领取寻宝战利品
+              <DesignIcon name="gift" /> 领取寻宝战利品
             </button>
           </div>
         </div>
@@ -89,6 +95,11 @@
 </template>
 
 <script setup lang="ts">
+import DesignIcon from '../DesignIcon.vue'
+import PetCompanion from './PetCompanion.vue'
+import PaperDoll from './PaperDoll.vue'
+import { PETS, type PetType } from '../../../shared/pets'
+import { selectPet } from '../../utils/platformState'
 import { ref, computed } from 'vue'
 import {
   platformOverview,
@@ -101,6 +112,11 @@ import {
 defineEmits(['close'])
 
 const loading = ref(false)
+const petError = ref('')
+async function handleSelectPet(type: PetType) {
+  loading.value = true; petError.value = ''
+  try { await selectPet(type) } catch (error: any) { petError.value = error.message || '暂时无法切换宠物' } finally { loading.value = false }
+}
 const currentLoveQuote = ref('')
 
 const companion = computed(() => platformOverview.value?.companion)

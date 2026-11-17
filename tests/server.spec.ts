@@ -11,7 +11,7 @@ test('server persists settings, hides passwords and rejects forged authenticatio
   let child: ChildProcess | undefined
   let base = ''
   async function start() {
-    child = fork(path.resolve('server.js'), [], { env: { ...process.env, PORT: '0', DATA_DIR: directory }, silent: true })
+    child = fork(path.resolve('server.js'), [], { env: { ...process.env, ADMIN_INITIAL_PASSWORD: 'test-admin-password', PORT: '0', DATA_DIR: directory }, silent: true })
     const port = await new Promise<number>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Test server did not start')), 10000)
       child!.once('message', (message: any) => { clearTimeout(timer); resolve(message.port) })
@@ -38,14 +38,14 @@ test('server persists settings, hides passwords and rejects forged authenticatio
       expect((await post('/api/config', { couponName: 'forged' }, token)).status).toBe(401)
     }
     expect((await post('/api/admin/login', { password: 'wrong' })).status).toBe(401)
-    const login = await (await post('/api/admin/login', { password: 'admin' })).json()
+    const login = await (await post('/api/admin/login', { password: 'test-admin-password' })).json()
     expect(login.success).toBe(true)
     const token = login.token
     const raw = { boardWidth: 360, boardHeight: 640, levels: [{ minCards: 25, maxCards: 31, layers: 8, spreadX: 60, spreadY: 70, layout: 'heart' }] }
     const saved = await (await post('/api/config', { gameSettings: raw, adminPassword: 'injected' }, token)).json()
     expect(saved.config.gameSettings).toEqual(normalizeGameSettings(raw))
     expect(saved.config).not.toHaveProperty('adminPassword')
-    expect(JSON.parse(readFileSync(path.join(directory, 'config.json'), 'utf8')).adminPassword).toBe('admin')
+    expect(JSON.parse(readFileSync(path.join(directory, 'config.json'), 'utf8')).adminPassword).toBe('test-admin-password')
     const boyfriend = await (await post('/api/config', { bfCardEnabled: false, bfPhotoIndex: 2, bfPhotos: [{ name: '帅照一', image: '/photos/replacement.jpg' }, { name: '救场队长', image: '/photos/second.jpg' }] }, token)).json()
     expect(boyfriend.config.bfCardEnabled).toBe(false)
     expect(boyfriend.config.bfPhotos).toHaveLength(6)

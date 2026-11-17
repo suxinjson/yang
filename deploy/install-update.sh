@@ -19,6 +19,10 @@ cleanup() { rm -rf -- "$STAGING"; }
 trap cleanup EXIT
 
 tar -xzf "$BUNDLE" -C "$STAGING"
+if [ -d "$STAGING/app-releases" ]; then
+  mkdir -p "$TARGET_DIR/data/app-releases"
+  cp -f "$STAGING/app-releases"/* "$TARGET_DIR/data/app-releases/"
+fi
 
 echo ">>> [2/3] 原子性同步更新生产文件..."
 # 保留现有的 data/ 文件夹（确保配置和心愿存折记录不被覆盖）

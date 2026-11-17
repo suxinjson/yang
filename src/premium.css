@@ -1,0 +1,52 @@
+/* Shared material, typography and spacing language across the player interface. */
+:root{--ink:#343d36;--muted:#7b8177;--paper:#f5f3ed;--line:#dcded3;--accent:#536454;--brass:#aa9064}
+body{background:var(--paper);color:var(--ink)}
+#app .home-hub-wrapper{max-width:580px;background:radial-gradient(ellipse at 0 0,#faf8f2,transparent 65%),#eeefe8;padding: max(22px,env(safe-area-inset-top)) 20px max(22px,env(safe-area-inset-bottom));gap:10px}
+#app .home-header{padding:0 2px 10px}
+#app .home-header .font-extrabold{font-weight:600;letter-spacing:.035em}
+#app .header-avatar{border:1px solid #d5d8cc;background:#e4e5db;box-shadow:none;overflow:hidden}
+#app .level-pill{color:#646f60;background:#e2e7da;font-weight:500;letter-spacing:.04em}
+#app .currency-badge{border:1px solid #dbdcd0;background:#f7f6ee;color:#766342;box-shadow:none;border-radius:10px;padding:7px 10px}
+#app .currency-badge.heart{color:#8b706a;background:#f2ebe5;border-color:#e2d6ce}
+#app .plus-btn{background:#e5ddc9;color:#756446}
+#app .room-selector-pill{border:0;background:transparent;color:#616b5e;padding:6px 0;font-weight:500}
+#app .room-badge{background:#dce2d5;color:#58654f;font-weight:500}
+#app .switch-hint{color:#7b836d}
+#app .top-shortcut-btn{border:1px solid #d9ddd1;color:#5e6b5b;background:#f8f8f1;font-weight:500}
+#app .quick-nav-bar{gap:8px;padding:9px 0 3px;scrollbar-width:none}
+#app .nav-chip{min-height:40px;padding:9px 12px;border:1px solid #d9ddd1;color:#53614f;background:#f9f9f3;border-radius:12px;box-shadow:none;font-weight:500;flex-shrink:0;display:flex;align-items:center;gap:6px}
+#app .chip-icon{font-size:16px;color:#87917e}
+#app .room-isometric-box{border-radius:8px 8px 26px 26px;box-shadow:0 24px 45px -25px #343e3940;border:1px solid #d1c8b6;background:#e9e3d5;aspect-ratio:1/1.04}
+#app .room-wall{background:linear-gradient(110deg,#e7e2d4,#f5f0e4 60%,#e0ddcf);border-bottom:6px solid #b4a58d;box-shadow:inset 0 -16px 25px #9584700d}
+#app .arched-window{border:5px solid #eae5d7;border-radius:40px 40px 0 0;background:linear-gradient(#bccbc8,#e7e8d5);box-shadow:0 8px 15px #554b3a16,inset 0 0 20px #728b7c24;width:83px;height:99px;left:27px;top:18px}
+#app .room-floor{background:repeating-linear-gradient(90deg,transparent 0,transparent 46px,#93847130 47px,#93847130 48px),repeating-linear-gradient(0deg,#d0bea3 0,#d0bea3 22px,#c8b599 23px,#c8b599 46px);box-shadow:inset 0 14px 30px #7a6c5320}
+#app .room-floor:after{content:'';position:absolute;inset:0;background:linear-gradient(120deg,#fff8de55,transparent 50%);pointer-events:none;z-index:2}
+#app .hotspot-pill{color:#616b58;background:#faf9f2e8;border:1px solid #e5e3d8;box-shadow:0 3px 8px #3c42300b;border-radius:5px;padding:4px 7px;font-weight:500;font-size:9px}
+#app .char-name-tag{background:#f9f8f0d9;color:#59614f;border:1px solid #e1e0d5;box-shadow:none;font-weight:500}
+#app .game-entry-btn{background:#4e604f;color:#faf8f0;border:1px solid #465446;box-shadow:0 8px 20px #42503c20;border-radius:16px}
+#app .room-pet{left:30%;bottom:7%;z-index:100;width:100px;height:90px}
+.modal-backdrop{background:#222c2660!important;backdrop-filter:blur(9px)!important}
+:is(.store-panel,.wardrobe-panel,.backpack-panel,.companion-panel,.job-panel,.auth-panel,.leaderboard-panel,.wish-panel,.arcade-panel){background:#faf9f4!important;border:1px solid #ffffffb0!important;border-radius:24px!important;box-shadow:0 28px 100px #26322630!important}
+:is(.panel-header,.panel-footer){background:#f4f3ec!important;border-color:#e2e3d8!important;padding:19px 20px!important}
+.panel-header h2{color:#374637!important;font-size:16px!important;font-weight:600!important;letter-spacing:.025em}
+.panel-header p{line-height:1.7!important;color:#8a8e81!important}
+:is(.tab-btn,.nav-tab-btn,.slot-tab){font-weight:500!important;letter-spacing:.02em}
+:is(.tab-btn,.nav-tab-btn,.slot-tab).active{background:#e5eadf!important;color:#4f634d!important;border-color:#8a9b80!important}
+:is(.store-item-card,.backpack-item-card,.clothing-card){border:1px solid #e1e3d7!important;background:#f2f2e9!important;border-radius:16px!important;box-shadow:none!important;overflow:hidden}
+:is(.item-icon-box,.item-icon-wrap,.card-icon){background:radial-gradient(ellipse at center,#fffdf6,transparent 75%)!important;display:grid!important;place-items:center!important;height:112px!important;margin:2px auto 8px!important}
+.item-title,.item-name,.card-name{color:#424d3d!important;font-weight:550!important}
+.item-desc{color:#8a8c7c!important;line-height:1.7!important}
+:is(.buy-btn,.btn-save,.btn-action,.btn-forage-claim){background:#53664f!important;color:#fffdf4!important;border-radius:10px!important;box-shadow:none!important;font-weight:500!important}
+:is(.close-btn,.btn-cancel){background:#e9ece1!important;color:#69745d!important}
+.price-tag{color:#93805e!important}.item-badge{background:#e7e9dc!important;color:#7c846b!important;font-weight:500!important}
+.avatar-preview-stage{background:radial-gradient(ellipse at 40% 20%,#faf7ec,#dfdfcf)!important;border-color:#dce0d2!important}
+.preview-backdrop-circle{background:#cfd5bf!important;opacity:.4}.aesthetic-pill{background:#f6f5eabf!important;color:#77816b!important}
+.section-card{background:#f1f3e9!important;border-color:#e0e5d5!important}.progress-fill{background:linear-gradient(90deg,#a7b59a,#73876b)!important}
+.pet-selection{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:18px}
+.pet-selection button{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 5px 12px;border-radius:14px;border:1px solid #dde2d2;background:#f9faf4;color:#5c6951;min-width:0}
+.pet-selection button[aria-pressed=true]{border-color:#809572;background:#e5ecdb;box-shadow:inset 0 0 0 1px #809572}
+.pet-selection strong{font-size:12px;font-weight:550}.pet-selection small{font-size:10px;line-height:1.6;color:#8b9580}.pet-error{font-size:12px;color:#a25145}
+.pet-avatar .pet-art{width:68px;height:65px}.partner-avatar{overflow:hidden}
+.game-wrapper{background:#f5f4ed!important}.game-button{background:#56664f;border-color:#56664f}.game-title{color:#59684e!important}
+@media(min-width:760px){#app .home-hub-wrapper{margin-top:20px;min-height:calc(100svh - 40px);border:1px solid #dfe2d5;border-radius:28px}#app .room-stage-section{margin:0 12px 12px}}
+@media(max-width:360px){#app .home-hub-wrapper{padding-left:10px;padding-right:10px}.pet-selection small{font-size:9px}}

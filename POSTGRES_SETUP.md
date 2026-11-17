@@ -31,6 +31,10 @@ docker compose up -d ganglegang
 
 迁移命令先用 PostgreSQL 17 的 pg_dump -Fc 备份独立游戏库到 data/backups，备份成功后才执行 deploy/schema.sql。任何备份错误都会停止结构迁移。镜像含 PostgreSQL 17 客户端；本机运行需要 pg_dump 在 PATH 或通过 PG_DUMP_BIN 指定。数据库结构不会在服务启动时自动升级。
 
+当前服务要求结构版本 3。升级脚本先构建镜像，再停止旧实例释放数据库锁，备份并迁移成功后才启动新实例；备份或迁移失败会中止更新并恢复旧镜像。版本 3 根据规范库存修复重复服饰/家具投影，加入全目录唯一约束和打工任务实例编号，支持领奖删除与宠物寻宝截止时间的持久化。
+
+客户端应随服务一起更新：单人通关需提交本地操作记录供服务端重放验证，榜单由结算自动生成。旧版本未保存操作记录的进行中牌局仅作本地练习，联网重开后可获得奖励。账号旧口令哈希会在成功登录后升级；登录会轮换个人凭证，退出会撤销当前凭证。
+
 首次启动 PostgreSQL 模式，将现有 data/coupon-ledger.json 或更早的 coupons.json 导入新库，同时保留原 JSON 文件。旧券保持无 ownerId 的共享归属；已有个人身份和库存一并迁移。首次导入完成后 PostgreSQL 为资产唯一来源，编辑旧 JSON 不会改变线上背包。
 
 若运行在 Windows PowerShell，需要先设置 PGHOST、PGPORT、PGDATABASE、PGUSER、PGPASSWORD 环境变量，再执行 npm run db:migrate；密码不要写入命令参数或提交文件。

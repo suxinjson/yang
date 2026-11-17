@@ -17110,7 +17110,7 @@
       "id": "2cf56671-621e-4216-8bd5-5a428861f3cb",
       "secretHash": "0f209691c36830e98b9eaaf92e1361af4784c04ab42ed742d1a05ca5ce494f8f",
       "createdAt": "2026-11-13T03:04:13.804Z",
-      "revision": 2,
+      "revision": 10,
       "items": {
         "gang.hint": {
           "itemId": "gang.hint",
@@ -17119,14 +17119,273 @@
         "gang.rescue": {
           "itemId": "gang.rescue",
           "quantity": 1
+        },
+        "furniture.sofa.modern": {
+          "id": "furniture.sofa.modern",
+          "itemId": "furniture.sofa.modern",
+          "catalogId": "furniture.sofa.modern",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.sofa.modern",
+            "name": "温馨双人沙发",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "sofa",
+            "icon": "🛋️",
+            "description": "宽大柔软的棉麻沙发，小两口窝在一起看剧的最佳阵地。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 500
+          },
+          "footprint": [
+            3,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "sofa",
+          "name": "温馨双人沙发",
+          "icon": "🛋️",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.rug.love": {
+          "id": "furniture.rug.love",
+          "itemId": "furniture.rug.love",
+          "catalogId": "furniture.rug.love",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.rug.love",
+            "name": "心形毛绒地毯",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              3
+            ],
+            "layer": "rug",
+            "rotatable": false,
+            "icon": "🧶",
+            "description": "粉白相间的超软爱心地毯，踩上去像踩在棉花糖上。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 260
+          },
+          "footprint": [
+            3,
+            3
+          ],
+          "rotatable": false,
+          "layer": "rug",
+          "interaction": null,
+          "name": "心形毛绒地毯",
+          "icon": "🧶",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.tv.retro": {
+          "id": "furniture.tv.retro",
+          "itemId": "furniture.tv.retro",
+          "catalogId": "furniture.tv.retro",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.tv.retro",
+            "name": "复古街机电视",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              1
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "arcade",
+            "icon": "📺",
+            "description": "点击即可开启游戏中心，游玩“钢了钢”与未来新对局！",
+            "rarity": "epic",
+            "stackable": false,
+            "price": 650
+          },
+          "footprint": [
+            2,
+            1
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "arcade",
+          "name": "复古街机电视",
+          "icon": "📺",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.mirror.dresser": {
+          "id": "furniture.mirror.dresser",
+          "itemId": "furniture.mirror.dresser",
+          "catalogId": "furniture.mirror.dresser",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.mirror.dresser",
+            "name": "全景穿衣魔镜",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": true,
+            "interaction": "wardrobe",
+            "icon": "🪞",
+            "description": "点击滑出捏脸与换装衣帽间，展示最靓丽的形象。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 320
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": true,
+          "layer": "wall",
+          "interaction": "wardrobe",
+          "name": "全景穿衣魔镜",
+          "icon": "🪞",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.desk.work": {
+          "id": "furniture.desk.work",
+          "itemId": "furniture.desk.work",
+          "catalogId": "furniture.desk.work",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.desk.work",
+            "name": "程序员工作台",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "job",
+            "icon": "💻",
+            "description": "配有双屏显示器的工作台，点击开启打工赚钱日程。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 450
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "job",
+          "name": "程序员工作台",
+          "icon": "💻",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.pet.bed": {
+          "id": "furniture.pet.bed",
+          "itemId": "furniture.pet.bed",
+          "catalogId": "furniture.pet.bed",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.pet.bed",
+            "name": "暖暖猫爬架窝",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "pet",
+            "icon": "🐾",
+            "description": "小猫小狗专属游乐小窝，点击喂食抚育与派遣寻宝。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 380
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "pet",
+          "name": "暖暖猫爬架窝",
+          "icon": "🐾",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.frame.couple": {
+          "id": "furniture.frame.couple",
+          "itemId": "furniture.frame.couple",
+          "catalogId": "furniture.frame.couple",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.frame.couple",
+            "name": "甜蜜双人相框",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": false,
+            "interaction": "wish",
+            "icon": "🖼️",
+            "description": "悬挂于墙面的相框，记录你们通关赢取的每一张心愿券。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 180
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": false,
+          "layer": "wall",
+          "interaction": "wish",
+          "name": "甜蜜双人相框",
+          "icon": "🖼️",
+          "kind": "furniture",
+          "stackable": false
         }
-      }
+      },
+      "starterFurnitureGranted": true
     },
     "626ee209-46c5-463f-910e-91475f1e302b": {
       "id": "626ee209-46c5-463f-910e-91475f1e302b",
       "secretHash": "d879e37da4e3aceb71d85a1a2606c6cf12d0860afea811c97807bcc9f491f964",
       "createdAt": "2026-11-13T03:14:24.822Z",
-      "revision": 6,
+      "revision": 75,
       "items": {
         "gang.hint": {
           "itemId": "gang.hint",
@@ -17135,15 +17394,274 @@
         "gang.rescue": {
           "itemId": "gang.rescue",
           "quantity": 1
+        },
+        "furniture.sofa.modern": {
+          "id": "furniture.sofa.modern",
+          "itemId": "furniture.sofa.modern",
+          "catalogId": "furniture.sofa.modern",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.sofa.modern",
+            "name": "温馨双人沙发",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "sofa",
+            "icon": "🛋️",
+            "description": "宽大柔软的棉麻沙发，小两口窝在一起看剧的最佳阵地。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 500
+          },
+          "footprint": [
+            3,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "sofa",
+          "name": "温馨双人沙发",
+          "icon": "🛋️",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.rug.love": {
+          "id": "furniture.rug.love",
+          "itemId": "furniture.rug.love",
+          "catalogId": "furniture.rug.love",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.rug.love",
+            "name": "心形毛绒地毯",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              3
+            ],
+            "layer": "rug",
+            "rotatable": false,
+            "icon": "🧶",
+            "description": "粉白相间的超软爱心地毯，踩上去像踩在棉花糖上。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 260
+          },
+          "footprint": [
+            3,
+            3
+          ],
+          "rotatable": false,
+          "layer": "rug",
+          "interaction": null,
+          "name": "心形毛绒地毯",
+          "icon": "🧶",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.tv.retro": {
+          "id": "furniture.tv.retro",
+          "itemId": "furniture.tv.retro",
+          "catalogId": "furniture.tv.retro",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.tv.retro",
+            "name": "复古街机电视",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              1
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "arcade",
+            "icon": "📺",
+            "description": "点击即可开启游戏中心，游玩“钢了钢”与未来新对局！",
+            "rarity": "epic",
+            "stackable": false,
+            "price": 650
+          },
+          "footprint": [
+            2,
+            1
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "arcade",
+          "name": "复古街机电视",
+          "icon": "📺",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.mirror.dresser": {
+          "id": "furniture.mirror.dresser",
+          "itemId": "furniture.mirror.dresser",
+          "catalogId": "furniture.mirror.dresser",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.mirror.dresser",
+            "name": "全景穿衣魔镜",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": true,
+            "interaction": "wardrobe",
+            "icon": "🪞",
+            "description": "点击滑出捏脸与换装衣帽间，展示最靓丽的形象。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 320
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": true,
+          "layer": "wall",
+          "interaction": "wardrobe",
+          "name": "全景穿衣魔镜",
+          "icon": "🪞",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.desk.work": {
+          "id": "furniture.desk.work",
+          "itemId": "furniture.desk.work",
+          "catalogId": "furniture.desk.work",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.desk.work",
+            "name": "程序员工作台",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "job",
+            "icon": "💻",
+            "description": "配有双屏显示器的工作台，点击开启打工赚钱日程。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 450
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "job",
+          "name": "程序员工作台",
+          "icon": "💻",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.pet.bed": {
+          "id": "furniture.pet.bed",
+          "itemId": "furniture.pet.bed",
+          "catalogId": "furniture.pet.bed",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.pet.bed",
+            "name": "暖暖猫爬架窝",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "pet",
+            "icon": "🐾",
+            "description": "小猫小狗专属游乐小窝，点击喂食抚育与派遣寻宝。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 380
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "pet",
+          "name": "暖暖猫爬架窝",
+          "icon": "🐾",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.frame.couple": {
+          "id": "furniture.frame.couple",
+          "itemId": "furniture.frame.couple",
+          "catalogId": "furniture.frame.couple",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.frame.couple",
+            "name": "甜蜜双人相框",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": false,
+            "interaction": "wish",
+            "icon": "🖼️",
+            "description": "悬挂于墙面的相框，记录你们通关赢取的每一张心愿券。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 180
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": false,
+          "layer": "wall",
+          "interaction": "wish",
+          "name": "甜蜜双人相框",
+          "icon": "🖼️",
+          "kind": "furniture",
+          "stackable": false
         }
       },
-      "heartCoins": 10
+      "heartCoins": 160,
+      "starterFurnitureGranted": true
     },
     "fffc3d47-d8e8-454f-a304-42175891373d": {
       "id": "fffc3d47-d8e8-454f-a304-42175891373d",
       "secretHash": "450c0d17a023bd96175a0ae2ef05a96b1aa386797a045bd58d085ec830c2329f",
       "createdAt": "2026-11-13T05:55:16.227Z",
-      "revision": 2,
+      "revision": 10,
       "items": {
         "gang.hint": {
           "itemId": "gang.hint",
@@ -17152,14 +17670,273 @@
         "gang.rescue": {
           "itemId": "gang.rescue",
           "quantity": 1
+        },
+        "furniture.sofa.modern": {
+          "id": "furniture.sofa.modern",
+          "itemId": "furniture.sofa.modern",
+          "catalogId": "furniture.sofa.modern",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.sofa.modern",
+            "name": "温馨双人沙发",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "sofa",
+            "icon": "🛋️",
+            "description": "宽大柔软的棉麻沙发，小两口窝在一起看剧的最佳阵地。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 500
+          },
+          "footprint": [
+            3,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "sofa",
+          "name": "温馨双人沙发",
+          "icon": "🛋️",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.rug.love": {
+          "id": "furniture.rug.love",
+          "itemId": "furniture.rug.love",
+          "catalogId": "furniture.rug.love",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.rug.love",
+            "name": "心形毛绒地毯",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              3
+            ],
+            "layer": "rug",
+            "rotatable": false,
+            "icon": "🧶",
+            "description": "粉白相间的超软爱心地毯，踩上去像踩在棉花糖上。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 260
+          },
+          "footprint": [
+            3,
+            3
+          ],
+          "rotatable": false,
+          "layer": "rug",
+          "interaction": null,
+          "name": "心形毛绒地毯",
+          "icon": "🧶",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.tv.retro": {
+          "id": "furniture.tv.retro",
+          "itemId": "furniture.tv.retro",
+          "catalogId": "furniture.tv.retro",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.tv.retro",
+            "name": "复古街机电视",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              1
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "arcade",
+            "icon": "📺",
+            "description": "点击即可开启游戏中心，游玩“钢了钢”与未来新对局！",
+            "rarity": "epic",
+            "stackable": false,
+            "price": 650
+          },
+          "footprint": [
+            2,
+            1
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "arcade",
+          "name": "复古街机电视",
+          "icon": "📺",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.mirror.dresser": {
+          "id": "furniture.mirror.dresser",
+          "itemId": "furniture.mirror.dresser",
+          "catalogId": "furniture.mirror.dresser",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.mirror.dresser",
+            "name": "全景穿衣魔镜",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": true,
+            "interaction": "wardrobe",
+            "icon": "🪞",
+            "description": "点击滑出捏脸与换装衣帽间，展示最靓丽的形象。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 320
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": true,
+          "layer": "wall",
+          "interaction": "wardrobe",
+          "name": "全景穿衣魔镜",
+          "icon": "🪞",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.desk.work": {
+          "id": "furniture.desk.work",
+          "itemId": "furniture.desk.work",
+          "catalogId": "furniture.desk.work",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.desk.work",
+            "name": "程序员工作台",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "job",
+            "icon": "💻",
+            "description": "配有双屏显示器的工作台，点击开启打工赚钱日程。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 450
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "job",
+          "name": "程序员工作台",
+          "icon": "💻",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.pet.bed": {
+          "id": "furniture.pet.bed",
+          "itemId": "furniture.pet.bed",
+          "catalogId": "furniture.pet.bed",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.pet.bed",
+            "name": "暖暖猫爬架窝",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "pet",
+            "icon": "🐾",
+            "description": "小猫小狗专属游乐小窝，点击喂食抚育与派遣寻宝。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 380
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "pet",
+          "name": "暖暖猫爬架窝",
+          "icon": "🐾",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.frame.couple": {
+          "id": "furniture.frame.couple",
+          "itemId": "furniture.frame.couple",
+          "catalogId": "furniture.frame.couple",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.frame.couple",
+            "name": "甜蜜双人相框",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": false,
+            "interaction": "wish",
+            "icon": "🖼️",
+            "description": "悬挂于墙面的相框，记录你们通关赢取的每一张心愿券。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 180
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": false,
+          "layer": "wall",
+          "interaction": "wish",
+          "name": "甜蜜双人相框",
+          "icon": "🖼️",
+          "kind": "furniture",
+          "stackable": false
         }
-      }
+      },
+      "starterFurnitureGranted": true
     },
     "3b9ce874-f731-4ab4-a7ca-7731e1338801": {
       "id": "3b9ce874-f731-4ab4-a7ca-7731e1338801",
       "secretHash": "d7c46ebb38e9165b5277502abb74f000d839d956587d2967aa7d354c27844427",
       "createdAt": "2026-11-13T05:56:02.234Z",
-      "revision": 2,
+      "revision": 10,
       "items": {
         "gang.hint": {
           "itemId": "gang.hint",
@@ -17168,8 +17945,267 @@
         "gang.rescue": {
           "itemId": "gang.rescue",
           "quantity": 1
+        },
+        "furniture.sofa.modern": {
+          "id": "furniture.sofa.modern",
+          "itemId": "furniture.sofa.modern",
+          "catalogId": "furniture.sofa.modern",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.sofa.modern",
+            "name": "温馨双人沙发",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "sofa",
+            "icon": "🛋️",
+            "description": "宽大柔软的棉麻沙发，小两口窝在一起看剧的最佳阵地。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 500
+          },
+          "footprint": [
+            3,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "sofa",
+          "name": "温馨双人沙发",
+          "icon": "🛋️",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.rug.love": {
+          "id": "furniture.rug.love",
+          "itemId": "furniture.rug.love",
+          "catalogId": "furniture.rug.love",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.rug.love",
+            "name": "心形毛绒地毯",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              3,
+              3
+            ],
+            "layer": "rug",
+            "rotatable": false,
+            "icon": "🧶",
+            "description": "粉白相间的超软爱心地毯，踩上去像踩在棉花糖上。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 260
+          },
+          "footprint": [
+            3,
+            3
+          ],
+          "rotatable": false,
+          "layer": "rug",
+          "interaction": null,
+          "name": "心形毛绒地毯",
+          "icon": "🧶",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.tv.retro": {
+          "id": "furniture.tv.retro",
+          "itemId": "furniture.tv.retro",
+          "catalogId": "furniture.tv.retro",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.tv.retro",
+            "name": "复古街机电视",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              1
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "arcade",
+            "icon": "📺",
+            "description": "点击即可开启游戏中心，游玩“钢了钢”与未来新对局！",
+            "rarity": "epic",
+            "stackable": false,
+            "price": 650
+          },
+          "footprint": [
+            2,
+            1
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "arcade",
+          "name": "复古街机电视",
+          "icon": "📺",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.mirror.dresser": {
+          "id": "furniture.mirror.dresser",
+          "itemId": "furniture.mirror.dresser",
+          "catalogId": "furniture.mirror.dresser",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.mirror.dresser",
+            "name": "全景穿衣魔镜",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": true,
+            "interaction": "wardrobe",
+            "icon": "🪞",
+            "description": "点击滑出捏脸与换装衣帽间，展示最靓丽的形象。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 320
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": true,
+          "layer": "wall",
+          "interaction": "wardrobe",
+          "name": "全景穿衣魔镜",
+          "icon": "🪞",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.desk.work": {
+          "id": "furniture.desk.work",
+          "itemId": "furniture.desk.work",
+          "catalogId": "furniture.desk.work",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.desk.work",
+            "name": "程序员工作台",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "job",
+            "icon": "💻",
+            "description": "配有双屏显示器的工作台，点击开启打工赚钱日程。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 450
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "job",
+          "name": "程序员工作台",
+          "icon": "💻",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.pet.bed": {
+          "id": "furniture.pet.bed",
+          "itemId": "furniture.pet.bed",
+          "catalogId": "furniture.pet.bed",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.pet.bed",
+            "name": "暖暖猫爬架窝",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              2,
+              2
+            ],
+            "layer": "ground",
+            "rotatable": true,
+            "interaction": "pet",
+            "icon": "🐾",
+            "description": "小猫小狗专属游乐小窝，点击喂食抚育与派遣寻宝。",
+            "rarity": "rare",
+            "stackable": false,
+            "price": 380
+          },
+          "footprint": [
+            2,
+            2
+          ],
+          "rotatable": true,
+          "layer": "ground",
+          "interaction": "pet",
+          "name": "暖暖猫爬架窝",
+          "icon": "🐾",
+          "kind": "furniture",
+          "stackable": false
+        },
+        "furniture.frame.couple": {
+          "id": "furniture.frame.couple",
+          "itemId": "furniture.frame.couple",
+          "catalogId": "furniture.frame.couple",
+          "category": "furniture",
+          "quantity": 1,
+          "isEquipped": false,
+          "metadata": {
+            "id": "furniture.frame.couple",
+            "name": "甜蜜双人相框",
+            "category": "furniture",
+            "kind": "furniture",
+            "footprint": [
+              1,
+              1
+            ],
+            "layer": "wall",
+            "rotatable": false,
+            "interaction": "wish",
+            "icon": "🖼️",
+            "description": "悬挂于墙面的相框，记录你们通关赢取的每一张心愿券。",
+            "rarity": "common",
+            "stackable": false,
+            "price": 180
+          },
+          "footprint": [
+            1,
+            1
+          ],
+          "rotatable": false,
+          "layer": "wall",
+          "interaction": "wish",
+          "name": "甜蜜双人相框",
+          "icon": "🖼️",
+          "kind": "furniture",
+          "stackable": false
         }
-      }
+      },
+      "starterFurnitureGranted": true
     }
   },
   "homeSpaces": {},
@@ -17177,11 +18213,48 @@
   "companions": {
     "626ee209-46c5-463f-910e-91475f1e302b": {
       "partnerName": "亲爱的",
-      "favorability": 110,
-      "petType": "cat",
+      "favorability": 260,
+      "petType": "golden",
       "petHunger": 80,
       "petStatus": "idle"
     }
   },
-  "idleJobs": {}
+  "idleJobs": {},
+  "multiplayerRooms": {
+    "666": {
+      "members": {
+        "626ee209-46c5-463f-910e-91475f1e302b": {
+          "profileId": "626ee209-46c5-463f-910e-91475f1e302b",
+          "nickname": "我",
+          "gender": "female",
+          "x": 9,
+          "y": 8,
+          "avatar": {},
+          "status": "active",
+          "lastSeen": 1794879719220
+        }
+      },
+      "updatedAt": 1794879514186
+    }
+  },
+  "roomWishes": {
+    "666": [
+      {
+        "id": "wish_init_1",
+        "title": "一起喝下午茶 ☕",
+        "desc": "挑选一间喜欢的甜品店，一起打卡！",
+        "author": "系统",
+        "completed": false,
+        "completedBy": null
+      },
+      {
+        "id": "wish_init_2",
+        "title": "联机通关钢了钢 🎮",
+        "desc": "互相赠送道具，携手战胜第 12 阶！",
+        "author": "系统",
+        "completed": false,
+        "completedBy": null
+      }
+    ]
+  }
 }

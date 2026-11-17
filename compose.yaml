@@ -10,6 +10,7 @@ services:
       - ./data:/app/data
     environment:
       - PORT=3000
+      - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-}
       - STORAGE_DRIVER=postgres
       - PGHOST=db
       - PGPORT=5432
